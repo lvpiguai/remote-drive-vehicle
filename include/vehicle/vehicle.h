@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "protocol/remote_control_protocol.h"
+#include "remote_drive.pb.h"
 #include "vehicle/cyber_chassis_gateway.h"
 #include "vehicle/vehicle_control_session.h"
 
@@ -38,7 +38,7 @@ private:
   void sendState();
 
   // 从底盘网关最近快照组装车辆状态
-  RemoteDrivingState drivingState() const;
+  remote_drive::protocol::ChassisState drivingState() const;
 
   std::string vehicle_id_;
   std::uint16_t local_port_;

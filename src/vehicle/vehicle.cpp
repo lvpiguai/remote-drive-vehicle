@@ -17,6 +17,8 @@
 
 namespace {
 
+namespace pb = remote_drive::protocol;
+
 // 将完整数据报发送到指定地址
 bool sendBytes(int fd, const sockaddr_in &address, const void *data,
                std::size_t size) {
@@ -146,7 +148,7 @@ void Vehicle::receiveControlPacket() {
     std::cout << "[控制接收] result=INVALID_PACKET size=" << size << '\n';
     return;
   }
-  const RemoteCtlCmd &command = packet->control;
+  const pb::RemoteDriveControlCommand &command = packet->control;
   const std::uint32_t sequence = packet->sequence;
 
   // 基于来源端点识别控制者
@@ -154,12 +156,12 @@ void Vehicle::receiveControlPacket() {
 
   // 无会话时仅接受有效的进入远控指令
   if (!control_session_) {
-    if (command.remoteMode != RemoteMode::REMOTE_ENTER || sequence == 0)
+    if (command.remote_mode() != pb::REMOTE_MODE_ENTER || sequence == 0)
       return;
     control_session_.emplace(chassis_gateway_, controller);
-    controller_id_ = command.cockpit_id;
+    controller_id_ = command.cockpit_id();
   } else if (controller == control_session_->controller() &&
-             controller_id_ != command.cockpit_id) {
+             controller_id_ != command.cockpit_id()) {
     // 拒绝活动端点冒用其他驾驶舱 ID
     return;
   }
@@ -173,14 +175,14 @@ void Vehicle::receiveControlPacket() {
     controller_id_.clear();
     std::cout << "车辆已退出远程驾驶模式\n";
   } else if (outcome.applied &&
-             command.remoteMode == RemoteMode::REMOTE_ENTER) {
+             command.remote_mode() == pb::REMOTE_MODE_ENTER) {
     std::cout << "车辆已进入远程驾驶模式\n";
   }
 }
 
 // 编码并发送一份当前车辆状态快照
 void Vehicle::sendState() {
-  const RemoteDrivingState state = drivingState();
+  const pb::ChassisState state = drivingState();
   const auto packet = remote_protocol::encodeDrivingState(state, state_seq_++);
   for (const auto &endpoint : cockpit_endpoints_) {
     if (!sendBytes(socket_fd_, endpoint, packet.data(), packet.size())) {
@@ -190,12 +192,13 @@ void Vehicle::sendState() {
 }
 
 // 将底盘网关状态复制到车端共享协议结构
-RemoteDrivingState Vehicle::drivingState() const {
-  RemoteDrivingState state =
-      chassis_gateway_.latestState().value_or(RemoteDrivingState{});
-  std::memcpy(state.vehicle_id, vehicle_id_.data(),
-              std::min(vehicle_id_.size(), sizeof(state.vehicle_id) - 1));
-  std::memcpy(state.controller_id, controller_id_.data(),
-              std::min(controller_id_.size(), sizeof(state.controller_id) - 1));
+pb::ChassisState Vehicle::drivingState() const {
+  const auto latest_state = chassis_gateway_.latestState();
+  pb::ChassisState state = latest_state.value_or(pb::ChassisState{});
+  state.set_vehicle_id(vehicle_id_);
+  state.set_controller_id(controller_id_);
+  if (!latest_state) {
+    state.set_parking(true);
+  }
   return state;
 }

@@ -20,16 +20,16 @@ enum Gear {
 }
 
 enum Bucket {
-  BUCKET_UP = 0;
-  BUCKET_DOWN = 1;
-  BUCKET_KEEP = 2;
+  BUCKET_KEEP = 0;
+  BUCKET_UP = 1;
+  BUCKET_DOWN = 2;
 }
 
 enum DriveMode {
-  DRIVE_MODE_MANUAL = 0;
-  DRIVE_MODE_STANDBY = 1;
-  DRIVE_MODE_REMOTE = 2;
-  DRIVE_MODE_AUTO = 3;
+  DRIVE_MODE_AUTO = 0;
+  DRIVE_MODE_MANUAL = 1;
+  DRIVE_MODE_STANDBY = 2;
+  DRIVE_MODE_REMOTE = 3;
 }
 
 enum RemoteMode {

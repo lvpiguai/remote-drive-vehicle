@@ -4,7 +4,7 @@
 #include <optional>
 #include <string>
 
-#include "protocol/remote_control_protocol.h"
+#include "remote_drive.pb.h"
 #include "vehicle/chassis_gateway.h"
 
 // Cyber RT 底盘通信适配器的本地占位实现
@@ -12,14 +12,15 @@ class CyberChassisGateway : public ChassisGateway {
  public:
   explicit CyberChassisGateway(std::string vehicle_id);
 
-  bool publishControl(const RemoteCtlCmd &command,
-                      std::uint32_t sequence) override;
-  std::optional<RemoteDrivingState> latestState() const override;
+  bool publishControl(
+      const remote_drive::protocol::RemoteDriveControlCommand &command,
+      std::uint32_t sequence) override;
+  std::optional<remote_drive::protocol::ChassisState> latestState() const override;
 
   // Apollo Reader 收到底盘状态后更新缓存
-  void updateState(const RemoteDrivingState &state);
+  void updateState(const remote_drive::protocol::ChassisState &state);
 
  private:
   std::string vehicle_id_;
-  std::optional<RemoteDrivingState> latest_state_;
+  std::optional<remote_drive::protocol::ChassisState> latest_state_;
 };
