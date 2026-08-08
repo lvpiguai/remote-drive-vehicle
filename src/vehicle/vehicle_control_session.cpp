@@ -113,9 +113,8 @@ pb::RemoteDriveControlCommand safeExitCommand(bool emergency_stop) {
 }  // namespace
 
 // 创建车端远控会话
-VehicleControlSession::VehicleControlSession(ChassisGateway &chassis_gateway,
-                                             ControllerId controller)
-    : chassis_gateway_(chassis_gateway), controller_(controller) {}
+VehicleControlSession::VehicleControlSession(ChassisGateway &chassis_gateway)
+    : chassis_gateway_(chassis_gateway) {}
 
 // 异常销毁活动会话时执行安全退出
 VehicleControlSession::~VehicleControlSession() {
@@ -171,7 +170,19 @@ VehicleControlSession::Outcome VehicleControlSession::handleCommand(
   if (!isValidCommand(command)) {
     return finish(Result::INVALID_COMMAND, false);
   }
-  if (source != controller_) {
+
+  if (!active_) {
+    if (command.remote_mode() != pb::REMOTE_MODE_ENTER || sequence == 0) {
+      return finish(Result::INVALID_COMMAND, false);
+    }
+    controller_ = source;
+    controller_id_ = command.cockpit_id();
+    last_sequence_ = 0;
+    last_control_time_ = now;
+    active_ = true;
+  }
+
+  if (source != *controller_ || command.cockpit_id() != controller_id_) {
     return finish(Result::CONTROLLER_BUSY, false);
   }
   if (sequence <= last_sequence_) {
@@ -213,6 +224,7 @@ bool VehicleControlSession::shouldLogControl(
 
 // 检查控制指令是否超时
 bool VehicleControlSession::tick(Clock::time_point now) {
+  if (!active_) return true;
   if (now - last_control_time_ < kRemoteControlTimeout) return true;
   leaveRemote(true);
   return false;
@@ -224,4 +236,6 @@ void VehicleControlSession::leaveRemote(bool emergency_stop) {
   latest_command_ = safeExitCommand(emergency_stop);
   chassis_gateway_.publishControl(latest_command_, last_sequence_ + 1);
   active_ = false;
+  controller_.reset();
+  controller_id_.clear();
 }

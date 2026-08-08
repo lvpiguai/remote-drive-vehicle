@@ -15,7 +15,7 @@ protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS proto/remote_drive.proto)
 
 add_library(vehicle_protocol
     ${PROTO_SRCS}
-    src/protocol/udp_protocol.cpp
+    src/protocol/udp_codec.cpp
 )
 
 target_include_directories(vehicle_protocol PUBLIC
@@ -26,6 +26,7 @@ target_include_directories(vehicle_protocol PUBLIC
 target_link_libraries(vehicle_protocol PUBLIC ${Protobuf_LIBRARIES})
 
 add_library(vehicle_core
+    src/network/udp_channel.cpp
     src/vehicle/cyber_chassis_gateway.cpp
     src/vehicle/vehicle.cpp
     src/vehicle/vehicle_control_session.cpp
@@ -40,9 +41,15 @@ add_executable(vehicle apps/main.cpp)
 target_link_libraries(vehicle PRIVATE vehicle_core)
 
 if(BUILD_TESTING)
-  add_executable(udp_protocol_test
-      tests/protocol/udp_protocol_test.cpp
+  add_executable(udp_codec_test
+      tests/protocol/udp_codec_test.cpp
   )
-  target_link_libraries(udp_protocol_test PRIVATE vehicle_core)
-  add_test(NAME udp_protocol_test COMMAND udp_protocol_test)
+  target_link_libraries(udp_codec_test PRIVATE vehicle_core)
+  add_test(NAME udp_codec_test COMMAND udp_codec_test)
+
+  add_executable(udp_channel_test
+      tests/network/udp_channel_test.cpp
+  )
+  target_link_libraries(udp_channel_test PRIVATE vehicle_core)
+  add_test(NAME udp_channel_test COMMAND udp_channel_test)
 endif()

@@ -2,6 +2,8 @@
 
 #include <chrono>
 #include <cstdint>
+#include <optional>
+#include <string>
 
 #include "remote_drive.pb.h"
 #include "vehicle/chassis_gateway.h"
@@ -25,13 +27,8 @@ class VehicleControlSession {
     bool ended = false;
   };
 
-  VehicleControlSession(ChassisGateway &chassis_gateway,
-                        ControllerId controller);
+  explicit VehicleControlSession(ChassisGateway &chassis_gateway);
   ~VehicleControlSession();
-
-  // 判断控制指令的标识、数值和枚举是否可由车端接受
-  static bool isValidCommand(
-      const remote_drive::protocol::RemoteDriveControlCommand &command);
 
   // 校验并处理已经解码的控制指令
   Outcome handleCommand(
@@ -42,16 +39,19 @@ class VehicleControlSession {
   // 检查控制超时；会话结束时返回 false
   bool tick(Clock::time_point now = Clock::now());
 
-  ControllerId controller() const { return controller_; }
+  const std::string &controllerId() const { return controller_id_; }
 
  private:
+  static bool isValidCommand(
+      const remote_drive::protocol::RemoteDriveControlCommand &command);
   bool shouldLogControl(
       const remote_drive::protocol::RemoteDriveControlCommand &command,
       Result result, bool applied);
   void leaveRemote(bool emergency_stop);
 
   ChassisGateway &chassis_gateway_;
-  ControllerId controller_;
+  std::optional<ControllerId> controller_;
+  std::string controller_id_;
   remote_drive::protocol::RemoteDriveControlCommand latest_command_{};
   std::uint32_t last_sequence_ = 0;
   Clock::time_point last_control_time_{};
@@ -59,5 +59,5 @@ class VehicleControlSession {
   Result last_logged_result_ = Result::ACCEPTED;
   bool last_logged_applied_ = false;
   bool has_logged_control_ = false;
-  bool active_ = true;
+  bool active_ = false;
 };
