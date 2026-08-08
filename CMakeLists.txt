@@ -18,7 +18,7 @@ target_include_directories(vehicle_protocol PUBLIC
 )
 
 add_library(vehicle_core
-    src/simulation/chassis_simulator.cpp
+    src/vehicle/cyber_chassis_gateway.cpp
     src/vehicle/vehicle.cpp
     src/vehicle/vehicle_control_session.cpp
 )

@@ -51,7 +51,8 @@ bool sameEndpoint(const sockaddr_in &left, const sockaddr_in &right) {
 Vehicle::Vehicle(std::string vehicle_id, std::uint16_t local_port,
                  std::vector<sockaddr_in> cockpit_endpoints)
     : vehicle_id_(std::move(vehicle_id)), local_port_(local_port),
-      cockpit_endpoints_(std::move(cockpit_endpoints)) {}
+      cockpit_endpoints_(std::move(cockpit_endpoints)),
+      chassis_gateway_(vehicle_id_) {}
 
 // 释放车端持有的 UDP socket
 Vehicle::~Vehicle() {
@@ -92,9 +93,8 @@ int Vehicle::run() {
       last_heartbeat = now;
     }
 
-    // 每 100ms 推进底盘和远控会话，再回传完整状态快照
+    // 每 100ms 检查远控会话并回传最近底盘状态快照
     if (now - last_state >= std::chrono::milliseconds(100)) {
-      chassis_.tick();
       if (control_session_ && !control_session_->tick(now)) {
         control_session_.reset();
         controller_id_.clear();
@@ -162,7 +162,7 @@ void Vehicle::receiveControlPacket() {
   if (!control_session_) {
     if (command.remoteMode != RemoteMode::REMOTE_ENTER || sequence == 0)
       return;
-    control_session_.emplace(chassis_, controller);
+    control_session_.emplace(chassis_gateway_, controller);
     controller_id_ = command.cockpit_id;
   } else if (controller == control_session_->controller() &&
              controller_id_ != command.cockpit_id) {
@@ -170,7 +170,7 @@ void Vehicle::receiveControlPacket() {
     return;
   }
 
-  // 会话校验控制权与序号并驱动底盘
+  // 会话校验控制权与序号并发布到底盘网关
   const auto outcome =
       control_session_->handleCommand(command, sequence, controller);
   if (outcome.ended) {
@@ -195,37 +195,13 @@ void Vehicle::sendState() {
   }
 }
 
-// 将底盘模拟器状态复制到车端共享协议结构
+// 将底盘网关状态复制到车端共享协议结构
 RemoteDrivingState Vehicle::drivingState() const {
-  const VehicleStatus &chassis = chassis_.status();
-  RemoteDrivingState state{};
-  state.steering = chassis.steering_angle;
-  state.speed = chassis.speed;
+  RemoteDrivingState state =
+      chassis_gateway_.latestState().value_or(RemoteDrivingState{});
   std::memcpy(state.vehicle_id, vehicle_id_.data(),
               std::min(vehicle_id_.size(), sizeof(state.vehicle_id) - 1));
   std::memcpy(state.controller_id, controller_id_.data(),
               std::min(controller_id_.size(), sizeof(state.controller_id) - 1));
-  state.remoteMode = chassis.drive_mode;
-  state.gear = chassis.gear;
-  state.bucket = chassis.bucket;
-  state.parking = chassis.parking;
-  state.horn = chassis.horn;
-  state.spray = chassis.spray;
-  state.emergency = chassis.remote_emergency;
-  state.window_wiper = chassis.window_wiper;
-  state.light_brake = chassis.light_brake;
-  state.light_position = chassis.light_position;
-  state.light_near = chassis.light_near;
-  state.light_far = chassis.light_far;
-  state.light_turn_left = chassis.light_turn_left;
-  state.light_turn_right = chassis.light_turn_right;
-  state.light_working_rear = chassis.light_working_rear;
-  state.light_danger = chassis.light_danger;
-  state.light_reverse = chassis.light_reverse;
-  state.light_double_flash = chassis.light_double_flash;
-  state.light_front = chassis.light_front;
-  state.light_working_side = chassis.light_working_side;
-  state.light_fog = chassis.light_fog;
-  state.diff_lock = chassis.diff_lock;
   return state;
 }

@@ -3,11 +3,32 @@
 #include <cstdint>
 #include <cstring>
 #include <optional>
+#include <vector>
 
 #include "protocol/binary_codec.h"
+#include "vehicle/chassis_gateway.h"
 #include "vehicle/vehicle_control_session.h"
 
 namespace {
+
+class FakeChassisGateway : public ChassisGateway {
+ public:
+  bool publishControl(const RemoteCtlCmd &command,
+                      std::uint32_t sequence) override {
+    published_commands.push_back(command);
+    published_sequences.push_back(sequence);
+    return publish_result;
+  }
+
+  std::optional<RemoteDrivingState> latestState() const override {
+    return latest_state;
+  }
+
+  bool publish_result = true;
+  std::optional<RemoteDrivingState> latest_state;
+  std::vector<RemoteCtlCmd> published_commands;
+  std::vector<std::uint32_t> published_sequences;
+};
 
 // 验证心跳包编解码
 void testHeartbeatRoundTrip() {
@@ -131,9 +152,9 @@ void testStateRoundTrip() {
 void testVehicleControlSession() {
   using Clock = VehicleControlSession::Clock;
   const auto start = Clock::time_point(std::chrono::seconds(1));
-  ChassisSimulator chassis;
+  FakeChassisGateway gateway;
   std::optional<VehicleControlSession> session;
-  session.emplace(chassis, 1);
+  session.emplace(gateway, 1);
 
   RemoteCtlCmd command{};
   command.remoteMode = RemoteMode::REMOTE_ENTER;
@@ -161,63 +182,50 @@ void testVehicleControlSession() {
   const auto first = session->handleCommand(command, 10, 1, start);
   assert(first.result == VehicleControlSession::Result::ACCEPTED);
   assert(first.applied && !first.ended);
-  assert(chassis.status().drive_mode == DriveMode::REMOTE);
-  assert(chassis.status().acc_pedal == 20);
-  assert(chassis.status().gear == GearInfo::DRIVE_1);
-  assert(chassis.status().bucket == BucketInfo::BUCKET_UP);
-  assert(chassis.status().horn);
-  assert(chassis.status().spray);
-  assert(chassis.status().window_wiper);
-  assert(chassis.status().light_brake);
-  assert(chassis.status().light_position);
-  assert(chassis.status().light_near);
-  assert(chassis.status().light_far);
-  assert(chassis.status().light_turn_left);
-  assert(chassis.status().light_turn_right);
-  assert(chassis.status().light_working_rear);
-  assert(chassis.status().light_danger);
-  assert(chassis.status().light_reverse);
-  assert(chassis.status().light_double_flash);
-  assert(chassis.status().light_front);
-  assert(chassis.status().light_working_side);
-  assert(chassis.status().light_fog);
-  assert(chassis.status().diff_lock);
+  assert(gateway.published_commands.size() == 1);
+  assert(gateway.published_sequences.back() == 10);
+  assert(gateway.published_commands.back().remoteMode ==
+         RemoteMode::REMOTE_ENTER);
+  assert(gateway.published_commands.back().acc_pedal == 20);
+  assert(gateway.published_commands.back().gear == GearInfo::DRIVE_1);
+  assert(gateway.published_commands.back().bucket_info ==
+         BucketInfo::BUCKET_UP);
+  assert(gateway.published_commands.back().horn == SwitchCommand::ON);
 
-  // NO_CTL 不覆盖车辆已经执行的开关状态
+  // NO_CTL 作为原始控制指令继续发布给真实底盘通道
   command.window_wiper = SwitchCommand::NO_CTL;
   command.light_near = SwitchCommand::NO_CTL;
   assert(session->handleCommand(command, 11, 1, start).result ==
          VehicleControlSession::Result::ACCEPTED);
-  assert(chassis.status().window_wiper);
-  assert(chassis.status().light_near);
-
-  // 已解除驻车、挂入前进挡且油门有效时，模拟车速应持续增长
-  chassis.tick();
-  assert(chassis.status().speed > 0);
+  assert(gateway.published_commands.size() == 2);
+  assert(gateway.published_commands.back().window_wiper ==
+         SwitchCommand::NO_CTL);
+  assert(gateway.published_commands.back().light_near ==
+         SwitchCommand::NO_CTL);
 
   command.parking = SwitchCommand::ON;
   assert(session->handleCommand(command, 12, 1, start).result ==
          VehicleControlSession::Result::ACCEPTED);
-  assert(chassis.status().acc_pedal == 0);
-  assert(chassis.status().brake_pedal == 100);
+  assert(gateway.published_commands.size() == 3);
 
   assert(session->handleCommand(command, 9, 1, start).result ==
          VehicleControlSession::Result::STALE_SEQUENCE);
   assert(session->handleCommand(command, 13, 2, start).result ==
          VehicleControlSession::Result::CONTROLLER_BUSY);
+  assert(gateway.published_commands.size() == 3);
 
   assert(session->tick(start + std::chrono::milliseconds(1499)));
   assert(!session->tick(start + std::chrono::milliseconds(1500)));
+  assert(gateway.published_commands.size() == 4);
+  assert(gateway.published_commands.back().remoteMode ==
+         RemoteMode::REMOTE_EXIT);
+  assert(gateway.published_commands.back().gear == GearInfo::NEUTRAL);
+  assert(gateway.published_commands.back().parking == SwitchCommand::ON);
+  assert(gateway.published_commands.back().remote_emergency ==
+         SwitchCommand::ON);
   session.reset();
-  assert(chassis.status().drive_mode == DriveMode::AUTO);
-  assert(chassis.status().gear == GearInfo::NEUTRAL);
-  assert(chassis.status().parking);
-  assert(chassis.status().remote_emergency);
-  assert(chassis.status().horn);
-  assert(chassis.status().acc_pedal == 0);
-  assert(chassis.status().brake_pedal == 100);
 
-  session.emplace(chassis, 2);
+  session.emplace(gateway, 2);
   command.remoteMode = RemoteMode::REMOTE_ENTER;
   command.remote_emergency = SwitchCommand::OFF;
   assert(session->handleCommand(command, 12, 2, start + std::chrono::seconds(2))
@@ -227,12 +235,11 @@ void testVehicleControlSession() {
       session->handleCommand(command, 13, 2, start + std::chrono::seconds(2));
   assert(exit.result == VehicleControlSession::Result::ACCEPTED);
   assert(exit.ended);
+  assert(gateway.published_commands.back().remoteMode ==
+         RemoteMode::REMOTE_EXIT);
+  assert(gateway.published_commands.back().remote_emergency ==
+         SwitchCommand::NO_CTL);
   session.reset();
-  assert(chassis.status().drive_mode == DriveMode::AUTO);
-  assert(chassis.status().gear == GearInfo::NEUTRAL);
-  assert(chassis.status().parking);
-  assert(!chassis.status().remote_emergency);
-  assert(chassis.status().horn);
 }
 
 } // namespace

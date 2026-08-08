@@ -1,0 +1,98 @@
+syntax = "proto3";
+
+package remote_drive.vehicle;
+
+enum Gear {
+  GEAR_NEUTRAL = 0;
+  GEAR_REVERSE_1 = 1;
+  GEAR_REVERSE_2 = 2;
+  GEAR_DRIVE_1 = 3;
+  GEAR_DRIVE_2 = 4;
+  GEAR_DRIVE_3 = 5;
+}
+
+enum Bucket {
+  BUCKET_UP = 0;
+  BUCKET_DOWN = 1;
+  BUCKET_KEEP = 2;
+}
+
+enum DriveMode {
+  DRIVE_MODE_MANUAL = 0;
+  DRIVE_MODE_STANDBY = 1;
+  DRIVE_MODE_REMOTE = 2;
+  DRIVE_MODE_AUTO = 3;
+}
+
+enum RemoteMode {
+  REMOTE_MODE_NO_CONTROL = 0;
+  REMOTE_MODE_ENTER = 1;
+  REMOTE_MODE_EXIT = 2;
+}
+
+enum SwitchCommand {
+  SWITCH_NO_CONTROL = 0;
+  SWITCH_OFF = 1;
+  SWITCH_ON = 2;
+}
+
+message RemoteDriveControlCommand {
+  string vehicle_id = 1;
+  string cockpit_id = 2;
+  uint32 sequence = 3;
+  double steering_angle = 4;
+  double accelerator_percent = 5;
+  double brake_percent = 6;
+  Gear gear = 7;
+  Bucket bucket = 8;
+  RemoteMode remote_mode = 9;
+  SwitchCommand parking = 10;
+  SwitchCommand horn = 11;
+  SwitchCommand spray = 12;
+  SwitchCommand remote_emergency = 13;
+  SwitchCommand window_wiper = 14;
+  SwitchCommand light_brake = 15;
+  SwitchCommand light_position = 16;
+  SwitchCommand light_near = 17;
+  SwitchCommand light_far = 18;
+  SwitchCommand light_turn_left = 19;
+  SwitchCommand light_turn_right = 20;
+  SwitchCommand light_working_rear = 21;
+  SwitchCommand light_danger = 22;
+  SwitchCommand light_reverse = 23;
+  SwitchCommand light_double_flash = 24;
+  SwitchCommand light_front = 25;
+  SwitchCommand light_working_side = 26;
+  SwitchCommand light_fog = 27;
+  SwitchCommand diff_lock = 28;
+}
+
+message ChassisState {
+  string vehicle_id = 1;
+  string controller_id = 2;
+  uint32 sequence = 3;
+  double steering_angle = 4;
+  double speed = 5;
+  DriveMode drive_mode = 6;
+  Gear gear = 7;
+  Bucket bucket = 8;
+  bool parking = 9;
+  bool horn = 10;
+  bool spray = 11;
+  bool emergency = 12;
+  bool window_wiper = 13;
+  bool light_brake = 14;
+  bool light_position = 15;
+  bool light_near = 16;
+  bool light_far = 17;
+  bool light_turn_left = 18;
+  bool light_turn_right = 19;
+  bool light_working_rear = 20;
+  bool light_danger = 21;
+  bool light_reverse = 22;
+  bool light_double_flash = 23;
+  bool light_front = 24;
+  bool light_working_side = 25;
+  bool light_fog = 26;
+  bool diff_lock = 27;
+}

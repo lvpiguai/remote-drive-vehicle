@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "protocol/remote_control_protocol.h"
-#include "simulation/chassis_simulator.h"
+#include "vehicle/cyber_chassis_gateway.h"
 #include "vehicle/vehicle_control_session.h"
 
 // 车端进程：接收远控指令，维护控制会话并周期回传车辆状态
@@ -37,7 +37,7 @@ private:
   // 编码并回传当前车辆状态
   void sendState();
 
-  // 从始终存在的底盘快照组装车辆状态
+  // 从底盘网关最近快照组装车辆状态
   RemoteDrivingState drivingState() const;
 
   std::string vehicle_id_;
@@ -45,7 +45,7 @@ private:
   int socket_fd_ = -1;
   std::vector<sockaddr_in> cockpit_endpoints_;
   std::string controller_id_;
-  ChassisSimulator chassis_;
+  CyberChassisGateway chassis_gateway_;
   std::optional<VehicleControlSession> control_session_;
   std::uint32_t heartbeat_seq_ = 1;
   std::uint32_t state_seq_ = 1;

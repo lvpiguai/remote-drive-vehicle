@@ -4,7 +4,7 @@
 #include <cstdint>
 
 #include "protocol/remote_control_protocol.h"
-#include "simulation/chassis_simulator.h"
+#include "vehicle/chassis_gateway.h"
 
 // 车端从接受 REMOTE_ENTER 到退出远控的一次控制会话
 class VehicleControlSession {
@@ -24,7 +24,8 @@ class VehicleControlSession {
     bool ended = false;
   };
 
-  VehicleControlSession(ChassisSimulator &chassis, ControllerId controller);
+  VehicleControlSession(ChassisGateway &chassis_gateway,
+                        ControllerId controller);
   ~VehicleControlSession();
 
   // 校验并处理已经解码的控制指令
@@ -42,7 +43,7 @@ class VehicleControlSession {
                         bool applied);
   void leaveRemote(bool emergency_stop);
 
-  ChassisSimulator &chassis_;
+  ChassisGateway &chassis_gateway_;
   ControllerId controller_;
   RemoteCtlCmd latest_command_{};
   std::uint32_t last_sequence_ = 0;

@@ -80,21 +80,32 @@ void logReceivedControl(const RemoteCtlCmd &command, std::uint32_t sequence,
             << '\n';
 }
 
+// 生成退出远控时发布到底盘的安全控制指令
+RemoteCtlCmd safeExitCommand(bool emergency_stop) {
+  RemoteCtlCmd command{};
+  command.remoteMode = RemoteMode::REMOTE_EXIT;
+  command.acc_pedal = 0;
+  command.brake_pedal = 100;
+  command.gear = GearInfo::NEUTRAL;
+  command.parking = SwitchCommand::ON;
+  command.remote_emergency =
+      emergency_stop ? SwitchCommand::ON : SwitchCommand::NO_CTL;
+  return command;
+}
+
 }  // namespace
 
-// 创建车端会话并让底盘进入远控模式
-VehicleControlSession::VehicleControlSession(ChassisSimulator &chassis,
+// 创建车端远控会话
+VehicleControlSession::VehicleControlSession(ChassisGateway &chassis_gateway,
                                              ControllerId controller)
-    : chassis_(chassis), controller_(controller) {
-  chassis_.enterRemote();
-}
+    : chassis_gateway_(chassis_gateway), controller_(controller) {}
 
 // 异常销毁活动会话时执行安全退出
 VehicleControlSession::~VehicleControlSession() {
   if (active_) leaveRemote(true);
 }
 
-// 校验来源和序号后将控制指令应用到底盘
+// 校验来源和序号后将控制指令发布到底盘网关
 VehicleControlSession::Outcome VehicleControlSession::handleCommand(
     const RemoteCtlCmd &command, std::uint32_t sequence, ControllerId source,
     Clock::time_point now) {
@@ -118,7 +129,9 @@ VehicleControlSession::Outcome VehicleControlSession::handleCommand(
     return finish(Result::ACCEPTED, true, true);
   }
 
-  chassis_.applyCommand(command);
+  if (!chassis_gateway_.publishControl(command, sequence)) {
+    return finish(Result::ACCEPTED, false);
+  }
   latest_command_ = command;
   last_sequence_ = sequence;
   last_control_time_ = now;
@@ -150,17 +163,10 @@ bool VehicleControlSession::tick(Clock::time_point now) {
   return false;
 }
 
-// 应用安全覆盖并让底盘退出远控模式
+// 发布安全退出控制并结束远控会话
 void VehicleControlSession::leaveRemote(bool emergency_stop) {
   if (!active_) return;
-  latest_command_.remoteMode = RemoteMode::REMOTE_EXIT;
-  latest_command_.acc_pedal = 0;
-  latest_command_.brake_pedal = 100;
-  latest_command_.gear = GearInfo::NEUTRAL;
-  latest_command_.parking = SwitchCommand::ON;
-  latest_command_.remote_emergency =
-      emergency_stop ? SwitchCommand::ON : SwitchCommand::NO_CTL;
-  chassis_.applyCommand(latest_command_);
-  chassis_.exitRemote();
+  latest_command_ = safeExitCommand(emergency_stop);
+  chassis_gateway_.publishControl(latest_command_, last_sequence_ + 1);
   active_ = false;
 }
