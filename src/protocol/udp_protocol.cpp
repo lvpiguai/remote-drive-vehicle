@@ -20,11 +20,8 @@ bool validSwitch(pb::SwitchCommand command) {
   return pb::SwitchCommand_IsValid(command);
 }
 
-void fillHeader(pb::UdpPacket &packet, pb::MessageType type,
-                std::uint32_t sequence) {
+void fillHeader(pb::UdpPacket &packet, std::uint32_t sequence) {
   packet.set_magic(kMagic);
-  packet.set_protocol_version(kProtocolVersion);
-  packet.set_message_type(type);
   packet.set_sequence(sequence);
 }
 
@@ -41,7 +38,7 @@ UdpPacketBytes serialize(const pb::UdpPacket &packet) {
 UdpPacketBytes encodeHeartbeat(const std::string &vehicle_id,
                                std::uint32_t sequence) {
   pb::UdpPacket packet;
-  fillHeader(packet, pb::MESSAGE_TYPE_HEARTBEAT, sequence);
+  fillHeader(packet, sequence);
   packet.mutable_heartbeat()->set_vehicle_id(vehicle_id);
   return serialize(packet);
 }
@@ -49,7 +46,7 @@ UdpPacketBytes encodeHeartbeat(const std::string &vehicle_id,
 UdpPacketBytes encodeControlCommand(const pb::RemoteDriveControlCommand &command,
                                     std::uint32_t sequence) {
   pb::UdpPacket packet;
-  fillHeader(packet, pb::MESSAGE_TYPE_CONTROL_CMD, sequence);
+  fillHeader(packet, sequence);
   packet.mutable_control()->CopyFrom(command);
   return serialize(packet);
 }
@@ -57,7 +54,7 @@ UdpPacketBytes encodeControlCommand(const pb::RemoteDriveControlCommand &command
 UdpPacketBytes encodeDrivingState(const pb::ChassisState &state,
                                   std::uint32_t sequence) {
   pb::UdpPacket packet;
-  fillHeader(packet, pb::MESSAGE_TYPE_VEHICLE_STATE, sequence);
+  fillHeader(packet, sequence);
   packet.mutable_state()->CopyFrom(state);
   return serialize(packet);
 }
@@ -69,8 +66,7 @@ std::optional<DecodedPacket> decodePacket(const std::uint8_t *data,
 
   pb::UdpPacket packet;
   if (!packet.ParseFromArray(data, static_cast<int>(size)) ||
-      packet.magic() != kMagic ||
-      packet.protocol_version() != kProtocolVersion) {
+      packet.magic() != kMagic) {
     return std::nullopt;
   }
 
@@ -78,24 +74,21 @@ std::optional<DecodedPacket> decodePacket(const std::uint8_t *data,
   decoded.sequence = packet.sequence();
   switch (packet.body_case()) {
   case pb::UdpPacket::kHeartbeat:
-    if (packet.message_type() != pb::MESSAGE_TYPE_HEARTBEAT ||
-        !validId(packet.heartbeat().vehicle_id())) {
+    if (!validId(packet.heartbeat().vehicle_id())) {
       return std::nullopt;
     }
     decoded.body = PacketBody::HEARTBEAT;
     decoded.vehicle_id = packet.heartbeat().vehicle_id();
     return decoded;
   case pb::UdpPacket::kControl:
-    if (packet.message_type() != pb::MESSAGE_TYPE_CONTROL_CMD ||
-        !validate(packet.control())) {
+    if (!validate(packet.control())) {
       return std::nullopt;
     }
     decoded.body = PacketBody::CONTROL_CMD;
     decoded.control.CopyFrom(packet.control());
     return decoded;
   case pb::UdpPacket::kState:
-    if (packet.message_type() != pb::MESSAGE_TYPE_VEHICLE_STATE ||
-        !validate(packet.state())) {
+    if (!validate(packet.state())) {
       return std::nullopt;
     }
     decoded.body = PacketBody::VEHICLE_STATE;

@@ -2,14 +2,6 @@ syntax = "proto3";
 
 package remote_drive.protocol;
 
-enum MessageType {
-  MESSAGE_TYPE_UNSPECIFIED = 0;
-  MESSAGE_TYPE_HEARTBEAT = 1;
-  MESSAGE_TYPE_VEHICLE_STATE = 3;
-  MESSAGE_TYPE_CONTROL_CMD = 4;
-  MESSAGE_TYPE_ERROR_REPORT = 5;
-}
-
 enum Gear {
   GEAR_NEUTRAL = 0;
   GEAR_REVERSE_1 = 1;
@@ -108,9 +100,7 @@ message ChassisState {
 
 message UdpPacket {
   uint32 magic = 1;
-  uint32 protocol_version = 2;
-  uint32 sequence = 3;
-  MessageType message_type = 4;
+  uint32 sequence = 2;
 
   oneof body {
     Heartbeat heartbeat = 10;

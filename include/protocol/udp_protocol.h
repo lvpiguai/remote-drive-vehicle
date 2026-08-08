@@ -11,7 +11,6 @@
 namespace remote_protocol {
 
 constexpr std::uint32_t kMagic = 0x52445550; // RDUP
-constexpr std::uint32_t kProtocolVersion = 1;
 constexpr std::size_t kMaxIdLength = 19;
 
 enum class PacketBody {
