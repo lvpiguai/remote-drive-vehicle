@@ -2,10 +2,11 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <optional>
 #include <vector>
 
-#include "protocol/binary_codec.h"
+#include "protocol/udp_protocol.h"
 #include "vehicle/chassis_gateway.h"
 #include "vehicle/vehicle_control_session.h"
 
@@ -32,35 +33,21 @@ class FakeChassisGateway : public ChassisGateway {
 
 // 验证心跳包编解码
 void testHeartbeatRoundTrip() {
-  HeartbeatPayload input{};
-  std::memcpy(input.vehicle_id, "truck_01", 8);
-
-  const auto packet = remote_protocol::encodeHeartbeat(input, 3);
-  assert(packet.size() == 27);
-  assert(packet[2] == static_cast<std::uint8_t>(MsgType::HEARTBEAT));
-  assert(remote_protocol::decodeMessageType(packet.data(), packet.size()) ==
-         MsgType::HEARTBEAT);
-
-  HeartbeatPayload output{};
-  std::uint32_t sequence = 0;
-  assert(remote_protocol::decodeHeartbeat(packet.data(), packet.size(), output,
-                                          sequence));
-  assert(sequence == 3);
-  assert(std::strcmp(output.vehicle_id, "truck_01") == 0);
+  const auto packet = remote_protocol::encodeHeartbeat("truck_01", 3);
+  const auto output =
+      remote_protocol::decodePacket(packet.data(), packet.size());
+  assert(output);
+  assert(output->body == remote_protocol::PacketBody::HEARTBEAT);
+  assert(output->sequence == 3);
+  assert(output->vehicle_id == "truck_01");
 
   auto invalid = packet;
-  invalid[2] = static_cast<std::uint8_t>(MsgType::VEHICLE_STATE);
-  assert(!remote_protocol::decodeHeartbeat(invalid.data(), invalid.size(),
-                                           output, sequence));
-  invalid = packet;
   invalid[0] = 0;
-  assert(!remote_protocol::decodeMessageType(invalid.data(), invalid.size()));
-  assert(!remote_protocol::decodeMessageType(packet.data(), 1));
-  invalid = packet;
-  std::memset(invalid.data() + sizeof(PacketHeader), 'x',
-              sizeof(HeartbeatPayload));
-  assert(!remote_protocol::decodeHeartbeat(invalid.data(), invalid.size(),
-                                           output, sequence));
+  assert(!remote_protocol::decodePacket(invalid.data(), invalid.size()));
+  assert(!remote_protocol::decodePacket(packet.data(), 1));
+
+  const auto empty_id = remote_protocol::encodeHeartbeat("", 4);
+  assert(!remote_protocol::decodePacket(empty_id.data(), empty_id.size()));
 }
 
 // 验证控制包编解码
@@ -78,39 +65,36 @@ void testControlRoundTrip() {
   input.diff_lock = SwitchCommand::ON;
 
   const auto packet = remote_protocol::encodeControlCommand(input, 42);
-  assert(packet.size() == 73);
-  assert(packet[0] == 0xCD && packet[1] == 0xAB);
-  assert(packet[2] == static_cast<std::uint8_t>(MsgType::CONTROL_CMD));
-
-  RemoteCtlCmd output{};
-  std::uint32_t sequence = 0;
-  assert(remote_protocol::decodeControlCommand(packet.data(), packet.size(),
-                                               output, sequence));
-  assert(sequence == 42);
-  assert(std::strcmp(output.cockpit_id, "cockpit_01") == 0);
-  assert(output.steering_angle == -12.5);
-  assert(output.acc_pedal == 35);
-  assert(output.gear == GearInfo::DRIVE_1);
-  assert(output.bucket_info == BucketInfo::BUCKET_DOWN);
-  assert(output.remoteMode == RemoteMode::REMOTE_ENTER);
-  assert(output.horn == SwitchCommand::ON);
-  assert(output.light_near == SwitchCommand::ON);
-  assert(output.diff_lock == SwitchCommand::ON);
+  const auto output =
+      remote_protocol::decodePacket(packet.data(), packet.size());
+  assert(output);
+  assert(output->body == remote_protocol::PacketBody::CONTROL_CMD);
+  assert(output->sequence == 42);
+  assert(std::strcmp(output->control.cockpit_id, "cockpit_01") == 0);
+  assert(output->control.steering_angle == -12.5);
+  assert(output->control.acc_pedal == 35);
+  assert(output->control.gear == GearInfo::DRIVE_1);
+  assert(output->control.bucket_info == BucketInfo::BUCKET_DOWN);
+  assert(output->control.remoteMode == RemoteMode::REMOTE_ENTER);
+  assert(output->control.horn == SwitchCommand::ON);
+  assert(output->control.light_near == SwitchCommand::ON);
+  assert(output->control.diff_lock == SwitchCommand::ON);
 
   auto invalid = packet;
   invalid[0] = 0;
-  assert(!remote_protocol::decodeControlCommand(invalid.data(), invalid.size(),
-                                                output, sequence));
-  assert(!remote_protocol::decodeControlCommand(
-      packet.data(), packet.size() - 1, output, sequence));
-  invalid = packet;
-  invalid.back() = 3;
-  assert(!remote_protocol::decodeControlCommand(invalid.data(), invalid.size(),
-                                                output, sequence));
-  invalid = packet;
-  invalid[sizeof(PacketHeader)] = '\0';
-  assert(!remote_protocol::decodeControlCommand(invalid.data(), invalid.size(),
-                                                output, sequence));
+  assert(!remote_protocol::decodePacket(invalid.data(), invalid.size()));
+  assert(!remote_protocol::decodePacket(packet.data(), packet.size() - 1));
+
+  input.cockpit_id[0] = '\0';
+  const auto empty_id = remote_protocol::encodeControlCommand(input, 43);
+  assert(!remote_protocol::decodePacket(empty_id.data(), empty_id.size()));
+
+  std::memcpy(input.cockpit_id, "cockpit_01", 10);
+  input.steering_angle = std::numeric_limits<double>::quiet_NaN();
+  const auto invalid_number =
+      remote_protocol::encodeControlCommand(input, 44);
+  assert(!remote_protocol::decodePacket(invalid_number.data(),
+                                        invalid_number.size()));
 }
 
 // 验证状态包编解码
@@ -125,27 +109,30 @@ void testStateRoundTrip() {
   input.parking = false;
 
   const auto packet = remote_protocol::encodeDrivingState(input, 7);
-  assert(packet.size() == 85);
-  RemoteDrivingState output{};
-  std::uint32_t sequence = 0;
-  assert(remote_protocol::decodeDrivingState(packet.data(), packet.size(),
-                                             output, sequence));
-  assert(sequence == 7);
-  assert(output.steering == 8.25);
-  assert(output.speed == 12);
-  assert(std::strcmp(output.vehicle_id, "truck_01") == 0);
-  assert(std::strcmp(output.controller_id, "cockpit_02") == 0);
-  assert(output.remoteMode == DriveMode::REMOTE);
+  const auto output =
+      remote_protocol::decodePacket(packet.data(), packet.size());
+  assert(output);
+  assert(output->body == remote_protocol::PacketBody::VEHICLE_STATE);
+  assert(output->sequence == 7);
+  assert(output->state.steering == 8.25);
+  assert(output->state.speed == 12);
+  assert(std::strcmp(output->state.vehicle_id, "truck_01") == 0);
+  assert(std::strcmp(output->state.controller_id, "cockpit_02") == 0);
+  assert(output->state.remoteMode == DriveMode::REMOTE);
 
   auto invalid = packet;
-  invalid[sizeof(PacketHeader)] = '\0';
-  assert(!remote_protocol::decodeDrivingState(invalid.data(), invalid.size(),
-                                              output, sequence));
-  invalid = packet;
-  std::memset(invalid.data() + sizeof(PacketHeader), 'x',
-              sizeof(RemoteDrivingState{}.vehicle_id));
-  assert(!remote_protocol::decodeDrivingState(invalid.data(), invalid.size(),
-                                              output, sequence));
+  invalid[0] = 0;
+  assert(!remote_protocol::decodePacket(invalid.data(), invalid.size()));
+
+  input.vehicle_id[0] = '\0';
+  const auto empty_id = remote_protocol::encodeDrivingState(input, 8);
+  assert(!remote_protocol::decodePacket(empty_id.data(), empty_id.size()));
+
+  std::memcpy(input.vehicle_id, "truck_01", 8);
+  input.speed = std::numeric_limits<double>::infinity();
+  const auto invalid_number = remote_protocol::encodeDrivingState(input, 9);
+  assert(!remote_protocol::decodePacket(invalid_number.data(),
+                                        invalid_number.size()));
 }
 
 // 验证车端网关流程
@@ -244,7 +231,7 @@ void testVehicleControlSession() {
 
 } // namespace
 
-// 运行二进制协议测试
+// 运行 UDP protobuf 协议测试
 int main() {
   testHeartbeatRoundTrip();
   testControlRoundTrip();

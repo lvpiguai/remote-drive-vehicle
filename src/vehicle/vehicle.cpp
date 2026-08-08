@@ -1,6 +1,6 @@
 #include "vehicle/vehicle.h"
 
-#include "protocol/binary_codec.h"
+#include "protocol/udp_protocol.h"
 #include <arpa/inet.h>
 #include <poll.h>
 #include <sys/socket.h>
@@ -22,13 +22,6 @@ bool sendBytes(int fd, const sockaddr_in &address, const void *data,
                std::size_t size) {
   return sendto(fd, data, size, 0, reinterpret_cast<const sockaddr *>(&address),
                 sizeof(address)) == static_cast<ssize_t>(size);
-}
-
-// 生成车辆在线心跳 payload
-HeartbeatPayload heartbeat(const std::string &vehicle_id) {
-  HeartbeatPayload payload{};
-  std::memcpy(payload.vehicle_id, vehicle_id.data(), vehicle_id.size());
-  return payload;
 }
 
 // 将 UDP 来源地址转换为控制者标识
@@ -86,7 +79,7 @@ int Vehicle::run() {
     // 每秒向驾驶舱发送一次车辆在线心跳并递增独立序列号
     if (now - last_heartbeat >= std::chrono::seconds(1)) {
       const auto packet = remote_protocol::encodeHeartbeat(
-          heartbeat(vehicle_id_), heartbeat_seq_++);
+          vehicle_id_, heartbeat_seq_++);
       for (const auto &endpoint : cockpit_endpoints_) {
         sendBytes(socket_fd_, endpoint, packet.data(), packet.size());
       }
@@ -147,13 +140,14 @@ void Vehicle::receiveControlPacket() {
     return;
 
   // 解码并校验控制协议
-  RemoteCtlCmd command{};
-  std::uint32_t sequence = 0;
-  if (!remote_protocol::decodeControlCommand(
-          buffer, static_cast<std::size_t>(size), command, sequence)) {
+  const auto packet =
+      remote_protocol::decodePacket(buffer, static_cast<std::size_t>(size));
+  if (!packet || packet->body != remote_protocol::PacketBody::CONTROL_CMD) {
     std::cout << "[控制接收] result=INVALID_PACKET size=" << size << '\n';
     return;
   }
+  const RemoteCtlCmd &command = packet->control;
+  const std::uint32_t sequence = packet->sequence;
 
   // 基于来源端点识别控制者
   const auto controller = controllerId(source);

@@ -1,0 +1,120 @@
+syntax = "proto3";
+
+package remote_drive.protocol;
+
+enum MessageType {
+  MESSAGE_TYPE_UNSPECIFIED = 0;
+  MESSAGE_TYPE_HEARTBEAT = 1;
+  MESSAGE_TYPE_VEHICLE_STATE = 3;
+  MESSAGE_TYPE_CONTROL_CMD = 4;
+  MESSAGE_TYPE_ERROR_REPORT = 5;
+}
+
+enum Gear {
+  GEAR_NEUTRAL = 0;
+  GEAR_REVERSE_1 = 1;
+  GEAR_REVERSE_2 = 2;
+  GEAR_DRIVE_1 = 3;
+  GEAR_DRIVE_2 = 4;
+  GEAR_DRIVE_3 = 5;
+}
+
+enum Bucket {
+  BUCKET_UP = 0;
+  BUCKET_DOWN = 1;
+  BUCKET_KEEP = 2;
+}
+
+enum DriveMode {
+  DRIVE_MODE_MANUAL = 0;
+  DRIVE_MODE_STANDBY = 1;
+  DRIVE_MODE_REMOTE = 2;
+  DRIVE_MODE_AUTO = 3;
+}
+
+enum RemoteMode {
+  REMOTE_MODE_NO_CONTROL = 0;
+  REMOTE_MODE_ENTER = 1;
+  REMOTE_MODE_EXIT = 2;
+}
+
+enum SwitchCommand {
+  SWITCH_NO_CONTROL = 0;
+  SWITCH_OFF = 1;
+  SWITCH_ON = 2;
+}
+
+message Heartbeat {
+  string vehicle_id = 1;
+}
+
+message RemoteDriveControlCommand {
+  string cockpit_id = 1;
+  double steering_angle = 2;
+  double accelerator_percent = 3;
+  double brake_percent = 4;
+  Gear gear = 5;
+  Bucket bucket = 6;
+  RemoteMode remote_mode = 7;
+  SwitchCommand parking = 8;
+  SwitchCommand horn = 9;
+  SwitchCommand spray = 10;
+  SwitchCommand remote_emergency = 11;
+  SwitchCommand window_wiper = 12;
+  SwitchCommand light_brake = 13;
+  SwitchCommand light_position = 14;
+  SwitchCommand light_near = 15;
+  SwitchCommand light_far = 16;
+  SwitchCommand light_turn_left = 17;
+  SwitchCommand light_turn_right = 18;
+  SwitchCommand light_working_rear = 19;
+  SwitchCommand light_danger = 20;
+  SwitchCommand light_reverse = 21;
+  SwitchCommand light_double_flash = 22;
+  SwitchCommand light_front = 23;
+  SwitchCommand light_working_side = 24;
+  SwitchCommand light_fog = 25;
+  SwitchCommand diff_lock = 26;
+}
+
+message ChassisState {
+  string vehicle_id = 1;
+  string controller_id = 2;
+  double steering_angle = 3;
+  double speed = 4;
+  DriveMode drive_mode = 5;
+  Gear gear = 6;
+  Bucket bucket = 7;
+  bool parking = 8;
+  bool horn = 9;
+  bool spray = 10;
+  bool emergency = 11;
+  bool window_wiper = 12;
+  bool light_brake = 13;
+  bool light_position = 14;
+  bool light_near = 15;
+  bool light_far = 16;
+  bool light_turn_left = 17;
+  bool light_turn_right = 18;
+  bool light_working_rear = 19;
+  bool light_danger = 20;
+  bool light_reverse = 21;
+  bool light_double_flash = 22;
+  bool light_front = 23;
+  bool light_working_side = 24;
+  bool light_fog = 25;
+  bool diff_lock = 26;
+}
+
+message UdpPacket {
+  uint32 magic = 1;
+  uint32 protocol_version = 2;
+  uint32 sequence = 3;
+  MessageType message_type = 4;
+
+  oneof body {
+    Heartbeat heartbeat = 10;
+    RemoteDriveControlCommand control = 11;
+    ChassisState state = 12;
+  }
+}

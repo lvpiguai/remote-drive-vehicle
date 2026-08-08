@@ -2,15 +2,6 @@
 
 #include <cstdint>
 
-// UDP 数据报中的业务消息类型
-enum class MsgType : std::uint8_t {
-  HEARTBEAT = 1,
-  LOGIN = 2,
-  VEHICLE_STATE = 3,
-  CONTROL_CMD = 4,
-  ERROR_REPORT = 5,
-};
-
 // 车辆实际挡位和驾驶舱目标挡位
 enum class GearInfo : std::uint8_t {
   NEUTRAL = 0,
@@ -50,21 +41,7 @@ enum class SwitchCommand : std::uint8_t {
   ON = 2,
 };
 
-#pragma pack(push, 1)
-
-// 7 字节定长包头
-struct PacketHeader {
-  std::uint16_t magic = 0;
-  std::uint8_t msg_type = 0;
-  std::uint32_t seq_number = 0;
-};
-
-// 车辆周期广播的在线心跳负载
-struct HeartbeatPayload {
-  char vehicle_id[20]{};
-};
-
-// 驾驶舱下发的定长远程控制指令
+// 驾驶舱下发的远程控制指令
 struct RemoteCtlCmd {
   char cockpit_id[20]{};
   double steering_angle = 0; // 度：-90=左满，0=回正，90=右满
@@ -123,13 +100,3 @@ struct RemoteDrivingState {
   bool light_fog = false;
   bool diff_lock = false;
 };
-
-#pragma pack(pop)
-
-static_assert(sizeof(bool) == 1, "协议要求 bool 占 1 字节");
-static_assert(sizeof(PacketHeader) == 7, "PacketHeader 必须为 7 字节");
-static_assert(sizeof(HeartbeatPayload) == 20,
-              "HeartbeatPayload 必须为 20 字节");
-static_assert(sizeof(RemoteCtlCmd) == 66, "RemoteCtlCmd 必须为 66 字节");
-static_assert(sizeof(RemoteDrivingState) == 78,
-              "RemoteDrivingState 必须为 78 字节");

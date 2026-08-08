@@ -4,18 +4,26 @@ project(remote_drive_vehicle LANGUAGES CXX)
 
 include(CTest)
 
+find_package(Protobuf REQUIRED)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 
+protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS proto/remote_drive.proto)
+
 add_library(vehicle_protocol
-    src/protocol/binary_codec.cpp
+    ${PROTO_SRCS}
+    src/protocol/udp_protocol.cpp
 )
 
 target_include_directories(vehicle_protocol PUBLIC
     include
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${Protobuf_INCLUDE_DIRS}
 )
+target_link_libraries(vehicle_protocol PUBLIC ${Protobuf_LIBRARIES})
 
 add_library(vehicle_core
     src/vehicle/cyber_chassis_gateway.cpp
@@ -32,9 +40,9 @@ add_executable(vehicle apps/main.cpp)
 target_link_libraries(vehicle PRIVATE vehicle_core)
 
 if(BUILD_TESTING)
-  add_executable(binary_protocol_test
-      tests/protocol/binary_protocol_test.cpp
+  add_executable(udp_protocol_test
+      tests/protocol/udp_protocol_test.cpp
   )
-  target_link_libraries(binary_protocol_test PRIVATE vehicle_core)
-  add_test(NAME binary_protocol_test COMMAND binary_protocol_test)
+  target_link_libraries(udp_protocol_test PRIVATE vehicle_core)
+  add_test(NAME udp_protocol_test COMMAND udp_protocol_test)
 endif()
