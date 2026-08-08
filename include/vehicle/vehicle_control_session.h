@@ -14,6 +14,7 @@ class VehicleControlSession {
 
   enum class Result {
     ACCEPTED,
+    INVALID_COMMAND,
     STALE_SEQUENCE,
     CONTROLLER_BUSY,
   };
@@ -27,6 +28,10 @@ class VehicleControlSession {
   VehicleControlSession(ChassisGateway &chassis_gateway,
                         ControllerId controller);
   ~VehicleControlSession();
+
+  // 判断控制指令的标识、数值和枚举是否可由车端接受
+  static bool isValidCommand(
+      const remote_drive::protocol::RemoteDriveControlCommand &command);
 
   // 校验并处理已经解码的控制指令
   Outcome handleCommand(

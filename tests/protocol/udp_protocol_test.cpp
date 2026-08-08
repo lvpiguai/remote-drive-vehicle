@@ -38,9 +38,9 @@ void testHeartbeatRoundTrip() {
   const auto output =
       remote_protocol::decodePacket(packet.data(), packet.size());
   assert(output);
-  assert(output->body == remote_protocol::PacketBody::HEARTBEAT);
-  assert(output->sequence == 3);
-  assert(output->vehicle_id == "truck_01");
+  assert(output->body_case() == pb::UdpPacket::kHeartbeat);
+  assert(output->sequence() == 3);
+  assert(output->heartbeat().vehicle_id() == "truck_01");
 
   auto invalid = packet;
   invalid[0] = 0;
@@ -48,7 +48,10 @@ void testHeartbeatRoundTrip() {
   assert(!remote_protocol::decodePacket(packet.data(), 1));
 
   const auto empty_id = remote_protocol::encodeHeartbeat("", 4);
-  assert(!remote_protocol::decodePacket(empty_id.data(), empty_id.size()));
+  const auto decoded_empty_id =
+      remote_protocol::decodePacket(empty_id.data(), empty_id.size());
+  assert(decoded_empty_id);
+  assert(decoded_empty_id->heartbeat().vehicle_id().empty());
 }
 
 // 验证控制包编解码
@@ -69,17 +72,17 @@ void testControlRoundTrip() {
   const auto output =
       remote_protocol::decodePacket(packet.data(), packet.size());
   assert(output);
-  assert(output->body == remote_protocol::PacketBody::CONTROL_CMD);
-  assert(output->sequence == 42);
-  assert(output->control.cockpit_id() == "cockpit_01");
-  assert(output->control.steering_angle() == -12.5);
-  assert(output->control.accelerator_percent() == 35);
-  assert(output->control.gear() == pb::GEAR_DRIVE_1);
-  assert(output->control.bucket() == pb::BUCKET_DOWN);
-  assert(output->control.remote_mode() == pb::REMOTE_MODE_ENTER);
-  assert(output->control.horn() == pb::SWITCH_ON);
-  assert(output->control.light_near() == pb::SWITCH_ON);
-  assert(output->control.diff_lock() == pb::SWITCH_ON);
+  assert(output->body_case() == pb::UdpPacket::kControl);
+  assert(output->sequence() == 42);
+  assert(output->control().cockpit_id() == "cockpit_01");
+  assert(output->control().steering_angle() == -12.5);
+  assert(output->control().accelerator_percent() == 35);
+  assert(output->control().gear() == pb::GEAR_DRIVE_1);
+  assert(output->control().bucket() == pb::BUCKET_DOWN);
+  assert(output->control().remote_mode() == pb::REMOTE_MODE_ENTER);
+  assert(output->control().horn() == pb::SWITCH_ON);
+  assert(output->control().light_near() == pb::SWITCH_ON);
+  assert(output->control().diff_lock() == pb::SWITCH_ON);
 
   auto invalid = packet;
   invalid[0] = 0;
@@ -88,14 +91,20 @@ void testControlRoundTrip() {
 
   input.clear_cockpit_id();
   const auto empty_id = remote_protocol::encodeControlCommand(input, 43);
-  assert(!remote_protocol::decodePacket(empty_id.data(), empty_id.size()));
+  const auto decoded_empty_id =
+      remote_protocol::decodePacket(empty_id.data(), empty_id.size());
+  assert(decoded_empty_id);
+  assert(!VehicleControlSession::isValidCommand(decoded_empty_id->control()));
 
   input.set_cockpit_id("cockpit_01");
   input.set_steering_angle(std::numeric_limits<double>::quiet_NaN());
   const auto invalid_number =
       remote_protocol::encodeControlCommand(input, 44);
-  assert(!remote_protocol::decodePacket(invalid_number.data(),
-                                        invalid_number.size()));
+  const auto decoded_invalid_number = remote_protocol::decodePacket(
+      invalid_number.data(), invalid_number.size());
+  assert(decoded_invalid_number);
+  assert(!VehicleControlSession::isValidCommand(
+      decoded_invalid_number->control()));
 }
 
 // 验证状态包编解码
@@ -112,13 +121,13 @@ void testStateRoundTrip() {
   const auto output =
       remote_protocol::decodePacket(packet.data(), packet.size());
   assert(output);
-  assert(output->body == remote_protocol::PacketBody::VEHICLE_STATE);
-  assert(output->sequence == 7);
-  assert(output->state.steering_angle() == 8.25);
-  assert(output->state.speed() == 12);
-  assert(output->state.vehicle_id() == "truck_01");
-  assert(output->state.controller_id() == "cockpit_02");
-  assert(output->state.drive_mode() == pb::DRIVE_MODE_REMOTE);
+  assert(output->body_case() == pb::UdpPacket::kState);
+  assert(output->sequence() == 7);
+  assert(output->state().steering_angle() == 8.25);
+  assert(output->state().speed() == 12);
+  assert(output->state().vehicle_id() == "truck_01");
+  assert(output->state().controller_id() == "cockpit_02");
+  assert(output->state().drive_mode() == pb::DRIVE_MODE_REMOTE);
 
   auto invalid = packet;
   invalid[0] = 0;
@@ -126,13 +135,13 @@ void testStateRoundTrip() {
 
   input.clear_vehicle_id();
   const auto empty_id = remote_protocol::encodeDrivingState(input, 8);
-  assert(!remote_protocol::decodePacket(empty_id.data(), empty_id.size()));
+  assert(remote_protocol::decodePacket(empty_id.data(), empty_id.size()));
 
   input.set_vehicle_id("truck_01");
   input.set_speed(std::numeric_limits<double>::infinity());
   const auto invalid_number = remote_protocol::encodeDrivingState(input, 9);
-  assert(!remote_protocol::decodePacket(invalid_number.data(),
-                                        invalid_number.size()));
+  assert(remote_protocol::decodePacket(invalid_number.data(),
+                                       invalid_number.size()));
 }
 
 // 验证车端网关流程
@@ -144,6 +153,7 @@ void testVehicleControlSession() {
   session.emplace(gateway, 1);
 
   pb::RemoteDriveControlCommand command;
+  command.set_cockpit_id("cockpit_01");
   command.set_remote_mode(pb::REMOTE_MODE_ENTER);
   command.set_parking(pb::SWITCH_OFF);
   command.set_gear(pb::GEAR_DRIVE_1);
@@ -166,6 +176,15 @@ void testVehicleControlSession() {
   command.set_light_working_side(pb::SWITCH_ON);
   command.set_light_fog(pb::SWITCH_ON);
   command.set_diff_lock(pb::SWITCH_ON);
+
+  auto invalid_command = command;
+  invalid_command.set_accelerator_percent(101);
+  const auto invalid =
+      session->handleCommand(invalid_command, 9, 1, start);
+  assert(invalid.result == VehicleControlSession::Result::INVALID_COMMAND);
+  assert(!invalid.applied);
+  assert(gateway.published_commands.empty());
+
   const auto first = session->handleCommand(command, 10, 1, start);
   assert(first.result == VehicleControlSession::Result::ACCEPTED);
   assert(first.applied && !first.ended);

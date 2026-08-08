@@ -34,8 +34,14 @@ private:
   // 接收并处理一个远程控制数据包
   void receiveControlPacket();
 
+  // 向全部驾驶舱发送车辆在线心跳
+  void sendHeartbeat();
+
   // 编码并回传当前车辆状态
   void sendState();
+
+  // 检查当前远控会话是否发生控制超时
+  void checkControlSession(Clock::time_point now);
 
   // 从底盘网关最近快照组装车辆状态
   remote_drive::protocol::ChassisState drivingState() const;

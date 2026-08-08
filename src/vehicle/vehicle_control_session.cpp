@@ -1,5 +1,7 @@
 #include "vehicle/vehicle_control_session.h"
 
+#include <cmath>
+#include <cstddef>
 #include <iostream>
 
 namespace {
@@ -7,6 +9,11 @@ namespace {
 namespace pb = remote_drive::protocol;
 
 constexpr auto kRemoteControlTimeout = std::chrono::milliseconds(1500);
+constexpr std::size_t kMaxCockpitIdLength = 19;
+
+bool validSwitch(pb::SwitchCommand command) {
+  return pb::SwitchCommand_IsValid(command);
+}
 
 // 将挡位转换为日志文本
 const char *gearName(pb::Gear gear) {
@@ -64,6 +71,8 @@ const char *resultName(VehicleControlSession::Result result) {
   switch (result) {
     case VehicleControlSession::Result::ACCEPTED:
       return "ACCEPTED";
+    case VehicleControlSession::Result::INVALID_COMMAND:
+      return "INVALID_COMMAND";
     case VehicleControlSession::Result::STALE_SEQUENCE:
       return "STALE_SEQUENCE";
     case VehicleControlSession::Result::CONTROLLER_BUSY:
@@ -113,6 +122,41 @@ VehicleControlSession::~VehicleControlSession() {
   if (active_) leaveRemote(true);
 }
 
+bool VehicleControlSession::isValidCommand(
+    const pb::RemoteDriveControlCommand &command) {
+  return !command.cockpit_id().empty() &&
+         command.cockpit_id().size() <= kMaxCockpitIdLength &&
+         std::isfinite(command.steering_angle()) &&
+         std::isfinite(command.accelerator_percent()) &&
+         std::isfinite(command.brake_percent()) &&
+         command.steering_angle() >= -90.0 &&
+         command.steering_angle() <= 90.0 &&
+         command.accelerator_percent() >= 0.0 &&
+         command.accelerator_percent() <= 100.0 &&
+         command.brake_percent() >= 0.0 &&
+         command.brake_percent() <= 100.0 &&
+         pb::Gear_IsValid(command.gear()) &&
+         pb::Bucket_IsValid(command.bucket()) &&
+         pb::RemoteMode_IsValid(command.remote_mode()) &&
+         validSwitch(command.parking()) && validSwitch(command.horn()) &&
+         validSwitch(command.spray()) &&
+         validSwitch(command.remote_emergency()) &&
+         validSwitch(command.window_wiper()) &&
+         validSwitch(command.light_brake()) &&
+         validSwitch(command.light_position()) &&
+         validSwitch(command.light_near()) &&
+         validSwitch(command.light_far()) &&
+         validSwitch(command.light_turn_left()) &&
+         validSwitch(command.light_turn_right()) &&
+         validSwitch(command.light_working_rear()) &&
+         validSwitch(command.light_danger()) &&
+         validSwitch(command.light_reverse()) &&
+         validSwitch(command.light_double_flash()) &&
+         validSwitch(command.light_front()) &&
+         validSwitch(command.light_working_side()) &&
+         validSwitch(command.light_fog()) && validSwitch(command.diff_lock());
+}
+
 // 校验来源和序号后将控制指令发布到底盘网关
 VehicleControlSession::Outcome VehicleControlSession::handleCommand(
     const pb::RemoteDriveControlCommand &command, std::uint32_t sequence,
@@ -124,6 +168,9 @@ VehicleControlSession::Outcome VehicleControlSession::handleCommand(
     return Outcome{result, applied, ended};
   };
 
+  if (!isValidCommand(command)) {
+    return finish(Result::INVALID_COMMAND, false);
+  }
   if (source != controller_) {
     return finish(Result::CONTROLLER_BUSY, false);
   }

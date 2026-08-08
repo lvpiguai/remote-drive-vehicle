@@ -11,21 +11,6 @@
 namespace remote_protocol {
 
 constexpr std::uint32_t kMagic = 0x52445550; // RDUP
-constexpr std::size_t kMaxIdLength = 19;
-
-enum class PacketBody {
-  HEARTBEAT,
-  CONTROL_CMD,
-  VEHICLE_STATE,
-};
-
-struct DecodedPacket {
-  PacketBody body = PacketBody::HEARTBEAT;
-  std::uint32_t sequence = 0;
-  std::string vehicle_id;
-  remote_drive::protocol::RemoteDriveControlCommand control{};
-  remote_drive::protocol::ChassisState state{};
-};
 
 using UdpPacketBytes = std::vector<std::uint8_t>;
 
@@ -42,13 +27,8 @@ UdpPacketBytes encodeControlCommand(
 UdpPacketBytes encodeDrivingState(
     const remote_drive::protocol::ChassisState &state, std::uint32_t sequence);
 
-// 解析并校验一个完整 UDP protobuf 包
-std::optional<DecodedPacket> decodePacket(const std::uint8_t *data,
-                                          std::size_t size);
-
-// 校验控制指令中的数值和枚举范围
-bool validate(
-    const remote_drive::protocol::RemoteDriveControlCommand &command);
-bool validate(const remote_drive::protocol::ChassisState &state);
+// 解析一个结构完整的 UDP protobuf 包
+std::optional<remote_drive::protocol::UdpPacket>
+decodePacket(const std::uint8_t *data, std::size_t size);
 
 } // namespace remote_protocol

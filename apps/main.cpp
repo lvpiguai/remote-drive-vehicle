@@ -1,6 +1,7 @@
 #include <arpa/inet.h>
 
 #include <charconv>
+#include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <optional>
@@ -9,10 +10,11 @@
 #include <utility>
 #include <vector>
 
-#include "protocol/udp_protocol.h"
 #include "vehicle/vehicle.h"
 
 namespace {
+
+constexpr std::size_t kMaxVehicleIdLength = 19;
 
 // 车端入口解析完成后的启动配置
 struct VehicleOptions {
@@ -52,10 +54,9 @@ bool parseEndpoint(std::string_view text, sockaddr_in &endpoint) {
   return true;
 }
 
-// 校验车辆 ID 能否安全写入定长协议字段和 Web JSON
+// 校验车辆 ID 的长度和 JSON 敏感字符
 bool validVehicleId(const std::string &vehicle_id) {
-  return !vehicle_id.empty() &&
-         vehicle_id.size() <= remote_protocol::kMaxIdLength &&
+  return !vehicle_id.empty() && vehicle_id.size() <= kMaxVehicleIdLength &&
          vehicle_id.find_first_of("\\\"") == std::string::npos;
 }
 

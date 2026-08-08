@@ -19,6 +19,9 @@ namespace {
 
 namespace pb = remote_drive::protocol;
 
+constexpr auto kHeartbeatInterval = std::chrono::seconds(1);
+constexpr auto kStateInterval = std::chrono::milliseconds(100);
+
 // 将完整数据报发送到指定地址
 bool sendBytes(int fd, const sockaddr_in &address, const void *data,
                std::size_t size) {
@@ -55,15 +58,16 @@ Vehicle::~Vehicle() {
     close(socket_fd_);
 }
 
-// 初始化通信并持续处理控制、心跳和状态回传
+// 主循环：初始化通信，循环处理控制、发送心跳和车辆状态
 int Vehicle::run() {
+  // 绑定车端 UDP socket
   if (!initialize())
     return 1;
   std::cout << "车端 " << vehicle_id_ << " 已监听 UDP " << local_port_ << '\n';
 
   // 首轮循环立即发送心跳和状态，避免等待一个完整周期
-  auto last_heartbeat = Clock::now() - std::chrono::seconds(1);
-  auto last_state = Clock::now() - std::chrono::milliseconds(100);
+  auto last_heartbeat = Clock::now() - kHeartbeatInterval;
+  auto last_state = Clock::now() - kStateInterval;
 
   while (true) {
     // 使用同一个 socket 接收驾驶舱控制并发送心跳和车辆状态
@@ -77,24 +81,14 @@ int Vehicle::run() {
       receiveControlPacket();
 
     const auto now = Clock::now();
+    checkControlSession(now);
 
-    // 每秒向驾驶舱发送一次车辆在线心跳并递增独立序列号
-    if (now - last_heartbeat >= std::chrono::seconds(1)) {
-      const auto packet = remote_protocol::encodeHeartbeat(
-          vehicle_id_, heartbeat_seq_++);
-      for (const auto &endpoint : cockpit_endpoints_) {
-        sendBytes(socket_fd_, endpoint, packet.data(), packet.size());
-      }
+    if (now - last_heartbeat >= kHeartbeatInterval) {
+      sendHeartbeat();
       last_heartbeat = now;
     }
 
-    // 每 100ms 检查远控会话并回传最近底盘状态快照
-    if (now - last_state >= std::chrono::milliseconds(100)) {
-      if (control_session_ && !control_session_->tick(now)) {
-        control_session_.reset();
-        controller_id_.clear();
-        std::cout << "远控指令超时，车辆已恢复自动模式\n";
-      }
+    if (now - last_state >= kStateInterval) {
       sendState();
       last_state = now;
     }
@@ -144,12 +138,17 @@ void Vehicle::receiveControlPacket() {
   // 解码并校验控制协议
   const auto packet =
       remote_protocol::decodePacket(buffer, static_cast<std::size_t>(size));
-  if (!packet || packet->body != remote_protocol::PacketBody::CONTROL_CMD) {
+  if (!packet || packet->body_case() != pb::UdpPacket::kControl) {
     std::cout << "[控制接收] result=INVALID_PACKET size=" << size << '\n';
     return;
   }
-  const pb::RemoteDriveControlCommand &command = packet->control;
-  const std::uint32_t sequence = packet->sequence;
+  const pb::RemoteDriveControlCommand &command = packet->control();
+  const std::uint32_t sequence = packet->sequence();
+
+  if (!VehicleControlSession::isValidCommand(command)) {
+    std::cout << "[控制接收] result=INVALID_COMMAND seq=" << sequence << '\n';
+    return;
+  }
 
   // 基于来源端点识别控制者
   const auto controller = controllerId(source);
@@ -180,6 +179,17 @@ void Vehicle::receiveControlPacket() {
   }
 }
 
+// 编码并向全部驾驶舱发送车辆在线心跳
+void Vehicle::sendHeartbeat() {
+  const auto packet =
+      remote_protocol::encodeHeartbeat(vehicle_id_, heartbeat_seq_++);
+  for (const auto &endpoint : cockpit_endpoints_) {
+    if (!sendBytes(socket_fd_, endpoint, packet.data(), packet.size())) {
+      perror("send vehicle heartbeat");
+    }
+  }
+}
+
 // 编码并发送一份当前车辆状态快照
 void Vehicle::sendState() {
   const pb::ChassisState state = drivingState();
@@ -189,6 +199,16 @@ void Vehicle::sendState() {
       perror("send vehicle state");
     }
   }
+}
+
+// 独立检查控制会话超时，不依赖心跳或状态发送周期
+void Vehicle::checkControlSession(Clock::time_point now) {
+  if (!control_session_ || control_session_->tick(now))
+    return;
+
+  control_session_.reset();
+  controller_id_.clear();
+  std::cout << "远控指令超时，车辆已恢复自动模式\n";
 }
 
 // 将底盘网关状态复制到车端共享协议结构
