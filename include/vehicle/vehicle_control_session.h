@@ -6,7 +6,6 @@
 #include <string>
 
 #include "remote_drive.pb.h"
-#include "vehicle/chassis_gateway.h"
 
 // 车端从接受 REMOTE_ENTER 到退出远控的一次控制会话
 class VehicleControlSession {
@@ -14,50 +13,31 @@ class VehicleControlSession {
   using Clock = std::chrono::steady_clock;
   using ControllerId = std::uint64_t;
 
-  enum class Result {
-    ACCEPTED,
-    INVALID_COMMAND,
-    STALE_SEQUENCE,
-    CONTROLLER_BUSY,
-  };
-
-  struct Outcome {
-    Result result = Result::ACCEPTED;
-    bool applied = false;
-    bool ended = false;
-  };
-
-  explicit VehicleControlSession(ChassisGateway &chassis_gateway);
-  ~VehicleControlSession();
-
-  // 校验并处理已经解码的控制指令
-  Outcome handleCommand(
+  // 判断一条控制指令是否允许转发到底盘控制通道
+  bool accept(
       const remote_drive::protocol::RemoteDriveControlCommand &command,
       std::uint32_t sequence, ControllerId source,
       Clock::time_point now = Clock::now());
 
-  // 检查控制超时；会话结束时返回 false
-  bool tick(Clock::time_point now = Clock::now());
+  // 检查控制超时；超时时返回一条需要转发到底盘的安全退出指令
+  std::optional<remote_drive::protocol::RemoteDriveControlCommand> tick(
+      Clock::time_point now = Clock::now());
+
+  // 主动结束当前远控会话；会话活跃时返回需要转发的安全退出指令
+  std::optional<remote_drive::protocol::RemoteDriveControlCommand> stop(
+      bool emergency_stop);
 
   const std::string &controllerId() const { return controller_id_; }
 
  private:
   static bool isValidCommand(
       const remote_drive::protocol::RemoteDriveControlCommand &command);
-  bool shouldLogControl(
-      const remote_drive::protocol::RemoteDriveControlCommand &command,
-      Result result, bool applied);
-  void leaveRemote(bool emergency_stop);
+  remote_drive::protocol::RemoteDriveControlCommand leaveRemote(
+      bool emergency_stop);
 
-  ChassisGateway &chassis_gateway_;
   std::optional<ControllerId> controller_;
   std::string controller_id_;
-  remote_drive::protocol::RemoteDriveControlCommand latest_command_{};
   std::uint32_t last_sequence_ = 0;
   Clock::time_point last_control_time_{};
-  remote_drive::protocol::RemoteDriveControlCommand last_logged_command_{};
-  Result last_logged_result_ = Result::ACCEPTED;
-  bool last_logged_applied_ = false;
-  bool has_logged_control_ = false;
   bool active_ = false;
 };

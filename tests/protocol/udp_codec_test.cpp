@@ -4,34 +4,13 @@
 #include <cstdint>
 #include <limits>
 #include <optional>
-#include <vector>
 
 #include "protocol/udp_codec.h"
-#include "vehicle/chassis_gateway.h"
 #include "vehicle/vehicle_control_session.h"
 
 namespace {
 
 namespace pb = remote_drive::protocol;
-
-class FakeChassisGateway : public ChassisGateway {
- public:
-  bool publishControl(const pb::RemoteDriveControlCommand &command,
-                      std::uint32_t sequence) override {
-    published_commands.push_back(command);
-    published_sequences.push_back(sequence);
-    return publish_result;
-  }
-
-  std::optional<pb::ChassisState> latestState() const override {
-    return latest_state;
-  }
-
-  bool publish_result = true;
-  std::optional<pb::ChassisState> latest_state;
-  std::vector<pb::RemoteDriveControlCommand> published_commands;
-  std::vector<std::uint32_t> published_sequences;
-};
 
 // 验证心跳包编解码
 void testHeartbeatRoundTrip() {
@@ -147,8 +126,7 @@ void testStateRoundTrip() {
 void testVehicleControlSession() {
   using Clock = VehicleControlSession::Clock;
   const auto start = Clock::time_point(std::chrono::seconds(1));
-  FakeChassisGateway gateway;
-  VehicleControlSession session(gateway);
+  VehicleControlSession session;
 
   pb::RemoteDriveControlCommand command;
   command.set_cockpit_id("cockpit_01");
@@ -177,68 +155,35 @@ void testVehicleControlSession() {
 
   auto invalid_command = command;
   invalid_command.set_accelerator_percent(101);
-  const auto invalid =
-      session.handleCommand(invalid_command, 9, 1, start);
-  assert(invalid.result == VehicleControlSession::Result::INVALID_COMMAND);
-  assert(!invalid.applied);
-  assert(gateway.published_commands.empty());
+  assert(!session.accept(invalid_command, 9, 1, start));
 
-  const auto first = session.handleCommand(command, 10, 1, start);
-  assert(first.result == VehicleControlSession::Result::ACCEPTED);
-  assert(first.applied && !first.ended);
-  assert(gateway.published_commands.size() == 1);
-  assert(gateway.published_sequences.back() == 10);
-  assert(gateway.published_commands.back().remote_mode() ==
-         pb::REMOTE_MODE_ENTER);
-  assert(gateway.published_commands.back().accelerator_percent() == 20);
-  assert(gateway.published_commands.back().gear() == pb::GEAR_DRIVE_1);
-  assert(gateway.published_commands.back().bucket() == pb::BUCKET_UP);
-  assert(gateway.published_commands.back().horn() == pb::SWITCH_ON);
+  assert(session.accept(command, 10, 1, start));
+  assert(session.controllerId() == "cockpit_01");
 
   // NO_CTL 作为原始控制指令继续发布给真实底盘通道
   command.set_window_wiper(pb::SWITCH_NO_CONTROL);
   command.set_light_near(pb::SWITCH_NO_CONTROL);
-  assert(session.handleCommand(command, 11, 1, start).result ==
-         VehicleControlSession::Result::ACCEPTED);
-  assert(gateway.published_commands.size() == 2);
-  assert(gateway.published_commands.back().window_wiper() ==
-         pb::SWITCH_NO_CONTROL);
-  assert(gateway.published_commands.back().light_near() ==
-         pb::SWITCH_NO_CONTROL);
+  assert(session.accept(command, 11, 1, start));
 
   command.set_parking(pb::SWITCH_ON);
-  assert(session.handleCommand(command, 12, 1, start).result ==
-         VehicleControlSession::Result::ACCEPTED);
-  assert(gateway.published_commands.size() == 3);
+  assert(session.accept(command, 12, 1, start));
 
-  assert(session.handleCommand(command, 9, 1, start).result ==
-         VehicleControlSession::Result::STALE_SEQUENCE);
-  assert(session.handleCommand(command, 13, 2, start).result ==
-         VehicleControlSession::Result::CONTROLLER_BUSY);
-  assert(gateway.published_commands.size() == 3);
+  assert(!session.accept(command, 9, 1, start));
+  assert(!session.accept(command, 13, 2, start));
 
-  assert(session.tick(start + std::chrono::milliseconds(1499)));
-  assert(!session.tick(start + std::chrono::milliseconds(1500)));
-  assert(gateway.published_commands.size() == 4);
-  assert(gateway.published_commands.back().remote_mode() ==
-         pb::REMOTE_MODE_EXIT);
-  assert(gateway.published_commands.back().gear() == pb::GEAR_NEUTRAL);
-  assert(gateway.published_commands.back().parking() == pb::SWITCH_ON);
-  assert(gateway.published_commands.back().remote_emergency() ==
-         pb::SWITCH_ON);
+  assert(!session.tick(start + std::chrono::milliseconds(1499)));
+  const auto timeout_exit = session.tick(start + std::chrono::milliseconds(1500));
+  assert(timeout_exit);
+  assert(timeout_exit->remote_mode() == pb::REMOTE_MODE_EXIT);
+  assert(timeout_exit->gear() == pb::GEAR_NEUTRAL);
+  assert(timeout_exit->parking() == pb::SWITCH_ON);
+  assert(timeout_exit->remote_emergency() == pb::SWITCH_ON);
   command.set_remote_mode(pb::REMOTE_MODE_ENTER);
   command.set_remote_emergency(pb::SWITCH_OFF);
-  assert(session.handleCommand(command, 12, 2, start + std::chrono::seconds(2))
-             .result == VehicleControlSession::Result::ACCEPTED);
+  assert(session.accept(command, 12, 2, start + std::chrono::seconds(2)));
   command.set_remote_mode(pb::REMOTE_MODE_EXIT);
-  const auto exit =
-      session.handleCommand(command, 13, 2, start + std::chrono::seconds(2));
-  assert(exit.result == VehicleControlSession::Result::ACCEPTED);
-  assert(exit.ended);
-  assert(gateway.published_commands.back().remote_mode() ==
-         pb::REMOTE_MODE_EXIT);
-  assert(gateway.published_commands.back().remote_emergency() ==
-         pb::SWITCH_NO_CONTROL);
+  assert(session.accept(command, 13, 2, start + std::chrono::seconds(2)));
+  assert(session.controllerId().empty());
 }
 
 } // namespace

@@ -1,0 +1,16 @@
+vehicle_id: "truck_01"
+local_port: 7006
+
+cockpits {
+  ip: "192.168.10.21"
+  port: 7005
+}
+
+cockpits {
+  ip: "192.168.10.22"
+  port: 7005
+}
+
+control_channel: "/remote_drive/control_cmd"
+heartbeat_interval_ms: 1000
+state_interval_ms: 100

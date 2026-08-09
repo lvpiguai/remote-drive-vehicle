@@ -2,7 +2,6 @@
 
 #include <cmath>
 #include <cstddef>
-#include <iostream>
 
 namespace {
 
@@ -13,88 +12,6 @@ constexpr std::size_t kMaxCockpitIdLength = 19;
 
 bool validSwitch(pb::SwitchCommand command) {
   return pb::SwitchCommand_IsValid(command);
-}
-
-// 将挡位转换为日志文本
-const char *gearName(pb::Gear gear) {
-  switch (gear) {
-    case pb::GEAR_NEUTRAL:
-      return "N";
-    case pb::GEAR_REVERSE_1:
-      return "R1";
-    case pb::GEAR_REVERSE_2:
-      return "R2";
-    case pb::GEAR_DRIVE_1:
-      return "D1";
-    case pb::GEAR_DRIVE_2:
-      return "D2";
-    case pb::GEAR_DRIVE_3:
-      return "D3";
-    default:
-      break;
-  }
-  return "UNKNOWN";
-}
-
-// 将远控模式指令转换为日志文本
-const char *remoteModeName(pb::RemoteMode mode) {
-  switch (mode) {
-    case pb::REMOTE_MODE_NO_CONTROL:
-      return "NONE";
-    case pb::REMOTE_MODE_ENTER:
-      return "ENTER";
-    case pb::REMOTE_MODE_EXIT:
-      return "EXIT";
-    default:
-      break;
-  }
-  return "UNKNOWN";
-}
-
-// 将三态开关指令转换为日志文本
-const char *switchCommandName(pb::SwitchCommand command) {
-  switch (command) {
-    case pb::SWITCH_NO_CONTROL:
-      return "NO_CTL";
-    case pb::SWITCH_OFF:
-      return "OFF";
-    case pb::SWITCH_ON:
-      return "ON";
-    default:
-      break;
-  }
-  return "UNKNOWN";
-}
-
-// 将控制处理结果转换为日志文本
-const char *resultName(VehicleControlSession::Result result) {
-  switch (result) {
-    case VehicleControlSession::Result::ACCEPTED:
-      return "ACCEPTED";
-    case VehicleControlSession::Result::INVALID_COMMAND:
-      return "INVALID_COMMAND";
-    case VehicleControlSession::Result::STALE_SEQUENCE:
-      return "STALE_SEQUENCE";
-    case VehicleControlSession::Result::CONTROLLER_BUSY:
-      return "CONTROLLER_BUSY";
-  }
-  return "UNKNOWN";
-}
-
-// 输出车端控制指令处理摘要
-void logReceivedControl(const pb::RemoteDriveControlCommand &command,
-                        std::uint32_t sequence,
-                        VehicleControlSession::Result result, bool applied) {
-  std::cout << "[控制接收] seq=" << sequence
-            << " steering=" << command.steering_angle()
-            << " acc=" << command.accelerator_percent()
-            << " brake=" << command.brake_percent()
-            << " gear=" << gearName(command.gear())
-            << " remote=" << remoteModeName(command.remote_mode())
-            << " parking=" << switchCommandName(command.parking())
-            << " emergency=" << switchCommandName(command.remote_emergency())
-            << " result=" << resultName(result) << " applied=" << applied
-            << '\n';
 }
 
 // 生成退出远控时发布到底盘的安全控制指令
@@ -111,15 +28,6 @@ pb::RemoteDriveControlCommand safeExitCommand(bool emergency_stop) {
 }
 
 }  // namespace
-
-// 创建车端远控会话
-VehicleControlSession::VehicleControlSession(ChassisGateway &chassis_gateway)
-    : chassis_gateway_(chassis_gateway) {}
-
-// 异常销毁活动会话时执行安全退出
-VehicleControlSession::~VehicleControlSession() {
-  if (active_) leaveRemote(true);
-}
 
 bool VehicleControlSession::isValidCommand(
     const pb::RemoteDriveControlCommand &command) {
@@ -156,24 +64,17 @@ bool VehicleControlSession::isValidCommand(
          validSwitch(command.light_fog()) && validSwitch(command.diff_lock());
 }
 
-// 校验来源和序号后将控制指令发布到底盘网关
-VehicleControlSession::Outcome VehicleControlSession::handleCommand(
+// 校验来源和序号后判断控制指令是否允许转发
+bool VehicleControlSession::accept(
     const pb::RemoteDriveControlCommand &command, std::uint32_t sequence,
     ControllerId source, Clock::time_point now) {
-  const auto finish = [&](Result result, bool applied, bool ended = false) {
-    if (shouldLogControl(command, result, applied)) {
-      logReceivedControl(command, sequence, result, applied);
-    }
-    return Outcome{result, applied, ended};
-  };
-
   if (!isValidCommand(command)) {
-    return finish(Result::INVALID_COMMAND, false);
+    return false;
   }
 
   if (!active_) {
     if (command.remote_mode() != pb::REMOTE_MODE_ENTER || sequence == 0) {
-      return finish(Result::INVALID_COMMAND, false);
+      return false;
     }
     controller_ = source;
     controller_id_ = command.cockpit_id();
@@ -183,59 +84,42 @@ VehicleControlSession::Outcome VehicleControlSession::handleCommand(
   }
 
   if (source != *controller_ || command.cockpit_id() != controller_id_) {
-    return finish(Result::CONTROLLER_BUSY, false);
+    return false;
   }
   if (sequence <= last_sequence_) {
-    return finish(Result::STALE_SEQUENCE, false);
+    return false;
   }
 
   if (command.remote_mode() == pb::REMOTE_MODE_EXIT) {
-    latest_command_ = command;
     leaveRemote(false);
-    return finish(Result::ACCEPTED, true, true);
+    return true;
   }
 
-  if (!chassis_gateway_.publishControl(command, sequence)) {
-    return finish(Result::ACCEPTED, false);
-  }
-  latest_command_ = command;
   last_sequence_ = sequence;
   last_control_time_ = now;
-  return finish(Result::ACCEPTED, true);
-}
-
-// 判断控制内容或处理结果是否发生变化
-bool VehicleControlSession::shouldLogControl(
-    const pb::RemoteDriveControlCommand &command, Result result, bool applied) {
-  const bool command_changed =
-      !has_logged_control_ ||
-      command.SerializeAsString() != last_logged_command_.SerializeAsString();
-  const bool outcome_changed = !has_logged_control_ ||
-                               result != last_logged_result_ ||
-                               applied != last_logged_applied_;
-  if (!command_changed && !outcome_changed) return false;
-
-  last_logged_command_ = command;
-  last_logged_result_ = result;
-  last_logged_applied_ = applied;
-  has_logged_control_ = true;
   return true;
 }
 
 // 检查控制指令是否超时
-bool VehicleControlSession::tick(Clock::time_point now) {
-  if (!active_) return true;
-  if (now - last_control_time_ < kRemoteControlTimeout) return true;
-  leaveRemote(true);
-  return false;
+std::optional<pb::RemoteDriveControlCommand> VehicleControlSession::tick(
+    Clock::time_point now) {
+  if (!active_) return std::nullopt;
+  if (now - last_control_time_ < kRemoteControlTimeout) return std::nullopt;
+  return leaveRemote(true);
 }
 
-// 发布安全退出控制并结束远控会话
-void VehicleControlSession::leaveRemote(bool emergency_stop) {
-  if (!active_) return;
-  latest_command_ = safeExitCommand(emergency_stop);
-  chassis_gateway_.publishControl(latest_command_, last_sequence_ + 1);
+std::optional<pb::RemoteDriveControlCommand> VehicleControlSession::stop(
+    bool emergency_stop) {
+  if (!active_) return std::nullopt;
+  return leaveRemote(emergency_stop);
+}
+
+// 生成安全退出控制并结束远控会话
+pb::RemoteDriveControlCommand VehicleControlSession::leaveRemote(
+    bool emergency_stop) {
+  const auto command = safeExitCommand(emergency_stop);
   active_ = false;
   controller_.reset();
   controller_id_.clear();
+  return command;
 }

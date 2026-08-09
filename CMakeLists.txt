@@ -11,7 +11,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 
-protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS proto/remote_drive.proto)
+protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS
+    proto/remote_drive.proto
+    proto/remote_drive_vehicle_config.proto
+)
 
 add_library(vehicle_protocol
     ${PROTO_SRCS}
@@ -27,8 +30,6 @@ target_link_libraries(vehicle_protocol PUBLIC ${Protobuf_LIBRARIES})
 
 add_library(vehicle_core
     src/network/udp_channel.cpp
-    src/vehicle/cyber_chassis_gateway.cpp
-    src/vehicle/vehicle.cpp
     src/vehicle/vehicle_control_session.cpp
 )
 
@@ -36,9 +37,6 @@ target_include_directories(vehicle_core PUBLIC
     include
 )
 target_link_libraries(vehicle_core PUBLIC vehicle_protocol)
-
-add_executable(vehicle apps/main.cpp)
-target_link_libraries(vehicle PRIVATE vehicle_core)
 
 if(BUILD_TESTING)
   add_executable(udp_codec_test
