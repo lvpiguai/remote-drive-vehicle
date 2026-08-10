@@ -11,6 +11,5 @@ cockpits {
   port: 7005
 }
 
-control_channel: "/remote_drive/control_cmd"
 heartbeat_interval_ms: 1000
 state_interval_ms: 100

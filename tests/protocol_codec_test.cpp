@@ -1,12 +1,11 @@
 #include <cassert>
-#include <cmath>
 #include <chrono>
 #include <cstdint>
 #include <limits>
-#include <optional>
+#include <string>
 
-#include "protocol/udp_codec.h"
-#include "vehicle/vehicle_control_session.h"
+#include "protocol_codec.h"
+#include "vehicle_control_session.h"
 
 namespace {
 
@@ -14,24 +13,20 @@ namespace pb = remote_drive::protocol;
 
 // 验证心跳包编解码
 void testHeartbeatRoundTrip() {
-  const auto packet = udp_codec::encodeHeartbeat("truck_01", 3);
+  const auto packet = protocol_codec::encodeHeartbeat("truck_01", 3);
   const auto output =
-      udp_codec::decodePacket(packet.data(), packet.size());
+      protocol_codec::decodePacket(packet.data(), packet.size());
   assert(output);
-  assert(output->body_case() == pb::UdpPacket::kHeartbeat);
+  assert(output->body_case() == pb::ProtocolPacket::kHeartbeat);
   assert(output->sequence() == 3);
   assert(output->heartbeat().vehicle_id() == "truck_01");
 
   auto invalid = packet;
   invalid[0] = 0;
-  assert(!udp_codec::decodePacket(invalid.data(), invalid.size()));
-  assert(!udp_codec::decodePacket(packet.data(), 1));
+  assert(!protocol_codec::decodePacket(invalid.data(), invalid.size()));
+  assert(!protocol_codec::decodePacket(packet.data(), 1));
 
-  const auto empty_id = udp_codec::encodeHeartbeat("", 4);
-  const auto decoded_empty_id =
-      udp_codec::decodePacket(empty_id.data(), empty_id.size());
-  assert(decoded_empty_id);
-  assert(decoded_empty_id->heartbeat().vehicle_id().empty());
+  assert(protocol_codec::encodeHeartbeat("", 4).empty());
 }
 
 // 验证控制包编解码
@@ -48,11 +43,11 @@ void testControlRoundTrip() {
   input.set_light_near(pb::SWITCH_ON);
   input.set_diff_lock(pb::SWITCH_ON);
 
-  const auto packet = udp_codec::encodeControlCommand(input, 42);
+  const auto packet = protocol_codec::encodeControlCommand(input, 42);
   const auto output =
-      udp_codec::decodePacket(packet.data(), packet.size());
+      protocol_codec::decodePacket(packet.data(), packet.size());
   assert(output);
-  assert(output->body_case() == pb::UdpPacket::kControl);
+  assert(output->body_case() == pb::ProtocolPacket::kControl);
   assert(output->sequence() == 42);
   assert(output->control().cockpit_id() == "cockpit_01");
   assert(output->control().steering_angle() == -12.5);
@@ -66,24 +61,24 @@ void testControlRoundTrip() {
 
   auto invalid = packet;
   invalid[0] = 0;
-  assert(!udp_codec::decodePacket(invalid.data(), invalid.size()));
-  assert(!udp_codec::decodePacket(packet.data(), packet.size() - 1));
+  assert(!protocol_codec::decodePacket(invalid.data(), invalid.size()));
+  assert(!protocol_codec::decodePacket(packet.data(), packet.size() - 1));
 
   input.clear_cockpit_id();
-  const auto empty_id = udp_codec::encodeControlCommand(input, 43);
-  const auto decoded_empty_id =
-      udp_codec::decodePacket(empty_id.data(), empty_id.size());
-  assert(decoded_empty_id);
-  assert(decoded_empty_id->control().cockpit_id().empty());
+  assert(protocol_codec::encodeControlCommand(input, 43).empty());
 
   input.set_cockpit_id("cockpit_01");
   input.set_steering_angle(std::numeric_limits<double>::quiet_NaN());
-  const auto invalid_number =
-      udp_codec::encodeControlCommand(input, 44);
-  const auto decoded_invalid_number = udp_codec::decodePacket(
-      invalid_number.data(), invalid_number.size());
-  assert(decoded_invalid_number);
-  assert(std::isnan(decoded_invalid_number->control().steering_angle()));
+  assert(protocol_codec::encodeControlCommand(input, 44).empty());
+
+  // 拒绝线上非法字段
+  auto invalid_fields = *output;
+  invalid_fields.mutable_control()->set_accelerator_percent(101);
+  std::string invalid_bytes;
+  assert(invalid_fields.SerializeToString(&invalid_bytes));
+  assert(!protocol_codec::decodePacket(
+      reinterpret_cast<const std::uint8_t *>(invalid_bytes.data()),
+      invalid_bytes.size()));
 }
 
 // 验证状态包编解码
@@ -96,11 +91,11 @@ void testStateRoundTrip() {
   input.set_drive_mode(pb::DRIVE_MODE_REMOTE);
   input.set_gear(pb::GEAR_DRIVE_1);
 
-  const auto packet = udp_codec::encodeDrivingState(input, 7);
+  const auto packet = protocol_codec::encodeDrivingState(input, 7);
   const auto output =
-      udp_codec::decodePacket(packet.data(), packet.size());
+      protocol_codec::decodePacket(packet.data(), packet.size());
   assert(output);
-  assert(output->body_case() == pb::UdpPacket::kState);
+  assert(output->body_case() == pb::ProtocolPacket::kState);
   assert(output->sequence() == 7);
   assert(output->state().steering_angle() == 8.25);
   assert(output->state().speed() == 12);
@@ -110,16 +105,14 @@ void testStateRoundTrip() {
 
   auto invalid = packet;
   invalid[0] = 0;
-  assert(!udp_codec::decodePacket(invalid.data(), invalid.size()));
+  assert(!protocol_codec::decodePacket(invalid.data(), invalid.size()));
 
   input.clear_vehicle_id();
-  const auto empty_id = udp_codec::encodeDrivingState(input, 8);
-  assert(udp_codec::decodePacket(empty_id.data(), empty_id.size()));
+  assert(protocol_codec::encodeDrivingState(input, 8).empty());
 
   input.set_vehicle_id("truck_01");
   input.set_speed(std::numeric_limits<double>::infinity());
-  const auto invalid_number = udp_codec::encodeDrivingState(input, 9);
-  assert(udp_codec::decodePacket(invalid_number.data(), invalid_number.size()));
+  assert(protocol_codec::encodeDrivingState(input, 9).empty());
 }
 
 // 验证车端网关流程
@@ -153,10 +146,6 @@ void testVehicleControlSession() {
   command.set_light_fog(pb::SWITCH_ON);
   command.set_diff_lock(pb::SWITCH_ON);
 
-  auto invalid_command = command;
-  invalid_command.set_accelerator_percent(101);
-  assert(!session.accept(invalid_command, 9, 1, start));
-
   assert(session.accept(command, 10, 1, start));
   assert(session.controllerId() == "cockpit_01");
 
@@ -171,13 +160,15 @@ void testVehicleControlSession() {
   assert(!session.accept(command, 9, 1, start));
   assert(!session.accept(command, 13, 2, start));
 
-  assert(!session.tick(start + std::chrono::milliseconds(1499)));
-  const auto timeout_exit = session.tick(start + std::chrono::milliseconds(1500));
+  assert(!session.checkTimeout(start + std::chrono::milliseconds(1499)));
+  const auto timeout_exit =
+      session.checkTimeout(start + std::chrono::milliseconds(1500));
   assert(timeout_exit);
+  assert(timeout_exit->cockpit_id() == "cockpit_01");
   assert(timeout_exit->remote_mode() == pb::REMOTE_MODE_EXIT);
-  assert(timeout_exit->gear() == pb::GEAR_NEUTRAL);
-  assert(timeout_exit->parking() == pb::SWITCH_ON);
-  assert(timeout_exit->remote_emergency() == pb::SWITCH_ON);
+  assert(timeout_exit->brake_percent() == 0);
+  assert(timeout_exit->parking() == pb::SWITCH_NO_CONTROL);
+  assert(timeout_exit->remote_emergency() == pb::SWITCH_NO_CONTROL);
   command.set_remote_mode(pb::REMOTE_MODE_ENTER);
   command.set_remote_emergency(pb::SWITCH_OFF);
   assert(session.accept(command, 12, 2, start + std::chrono::seconds(2)));
@@ -188,7 +179,7 @@ void testVehicleControlSession() {
 
 } // namespace
 
-// 运行 UDP protobuf 协议测试
+// 运行协议编解码与会话测试
 int main() {
   testHeartbeatRoundTrip();
   testControlRoundTrip();

@@ -1,4 +1,4 @@
-#include "network/udp_channel.h"
+#include "udp_channel.h"
 
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -10,19 +10,23 @@ constexpr std::size_t kReceiveBufferSize = 256;
 
 } // namespace
 
+// 关闭 UDP socket
 UdpChannel::~UdpChannel() {
   if (fd_ >= 0)
     close(fd_);
 }
 
+// 创建并绑定 UDP socket
 bool UdpChannel::bindPort(std::uint16_t port) {
   if (fd_ >= 0)
     return false;
 
+  // 创建 socket
   const int next_fd = socket(AF_INET, SOCK_DGRAM, 0);
   if (next_fd < 0)
     return false;
 
+  // 绑定监听端口
   sockaddr_in address{};
   address.sin_family = AF_INET;
   address.sin_port = htons(port);
@@ -37,24 +41,27 @@ bool UdpChannel::bindPort(std::uint16_t port) {
   return true;
 }
 
-bool UdpChannel::receive(UdpDatagram &datagram) {
-  if (fd_ < 0)
-    return false;
+// 接收 UDP 数据报
+std::optional<UdpDatagram> UdpChannel::receive() {
+  if (fd_ < 0) return std::nullopt;
 
+  // 读取负载和来源地址
+  UdpDatagram datagram;
   datagram.payload.resize(kReceiveBufferSize);
   socklen_t source_size = sizeof(datagram.source);
   const ssize_t size = recvfrom(
       fd_, datagram.payload.data(), datagram.payload.size(), MSG_DONTWAIT,
       reinterpret_cast<sockaddr *>(&datagram.source), &source_size);
   if (size <= 0) {
-    datagram.payload.clear();
-    return false;
+    return std::nullopt;
   }
 
+  // 保留实际负载长度
   datagram.payload.resize(static_cast<std::size_t>(size));
-  return true;
+  return datagram;
 }
 
+// 发送 UDP 数据报
 bool UdpChannel::send(const sockaddr_in &destination, const void *data,
                       std::size_t size) const {
   if (fd_ < 0)

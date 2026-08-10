@@ -5,18 +5,17 @@
 ## 目录
 
 ```text
-include/  # UDP、协议和远控会话头文件
-src/      # 实现
+include/  # Component、UDP、协议和远控会话头文件
+src/      # Component、UDP、协议和远控会话实现
 proto/    # Cyber RT 控制指令和底盘状态消息定义
-conf/     # 车端部署配置模板
-apollo/   # Apollo Cyber RT 组件、DAG 和 launch
+conf/     # DAG、launch 和车端部署配置模板
 tests/    # 车端测试
 ```
 
-`include/protocol/` 和 `src/protocol/` 是车端自己的协议实现。驾驶舱项目维护另一份
-协议实现，两个项目不共享源码。
+`include/protocol_codec.h` 和 `src/protocol_codec.cpp` 是车端自己的协议实现。
+驾驶舱项目维护另一份协议实现，两个项目不共享源码。
 
-`RemoteDriveVehicleComponent` 是车端模块入口，负责初始化 UDP 通道、创建 Cyber
+`RemoteDriveComponent` 是车端模块入口，负责初始化 UDP 通道、创建 Cyber
 Writer、启动 UDP 工作线程并管理生命周期。底盘状态由 DAG reader 触发 `Proc()`
 缓存，UDP 工作线程需要回传状态时读取最近一次缓存。`VehicleControlSession` 只负责
 控制权仲裁、控制序号校验、远控退出和断联保护；它只判断控制指令是否允许转发，
@@ -35,7 +34,7 @@ ctest --test-dir build --output-on-failure
 真实部署通过 Apollo Cyber RT 加载组件：
 
 ```bash
-cyber_launch start apollo/remote_drive_vehicle.launch
+cyber_launch start conf/remote_drive_vehicle.launch
 ```
 
 组件通过 DAG 从车端运行目录加载配置：

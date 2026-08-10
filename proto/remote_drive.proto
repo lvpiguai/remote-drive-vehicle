@@ -98,7 +98,7 @@ message ChassisState {
   bool diff_lock = 26;
 }
 
-message UdpPacket {
+message ProtocolPacket {
   uint32 magic = 1;
   uint32 sequence = 2;
 

@@ -1,7 +1,7 @@
 module_config {
   module_library: "/apollo/bazel-bin/modules/remote_drive_vehicle/libremote_drive_vehicle_component.so"
   components {
-    class_name: "remote_drive::vehicle::RemoteDriveVehicleComponent"
+    class_name: "remote_drive::vehicle::RemoteDriveComponent"
     config {
       name: "remote_drive_vehicle"
       config_file_path: "/apollo/data/remote_drive/vehicle.pb.txt"

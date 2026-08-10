@@ -17,9 +17,10 @@ message RemoteDriveVehicleConfig {
   // 车辆状态发送目标，同时作为控制包来源白名单
   repeated UdpEndpoint cockpits = 3;
 
-  // 底盘控制 Channel 及车辆对外周期消息间隔
-  optional string control_channel = 4
-      [default = "/remote_drive/control_cmd"];
+  // 字段 4 曾用于控制 Channel，保留编号避免后续误复用
+  reserved 4;
+
+  // 车辆对外发送周期
   optional uint32 heartbeat_interval_ms = 5 [default = 1000];
   optional uint32 state_interval_ms = 6 [default = 100];
 }

@@ -1,4 +1,4 @@
-#include "network/udp_channel.h"
+#include "udp_channel.h"
 
 #include <arpa/inet.h>
 #include <poll.h>
@@ -9,6 +9,7 @@
 
 namespace {
 
+// 获取 UDP 通道的本地回环地址
 sockaddr_in localAddress(const UdpChannel &channel) {
   sockaddr_in address{};
   socklen_t address_size = sizeof(address);
@@ -20,6 +21,7 @@ sockaddr_in localAddress(const UdpChannel &channel) {
 
 } // namespace
 
+// 验证 UDP 绑定与回环收发
 int main() {
   UdpChannel sender;
   UdpChannel receiver;
@@ -32,9 +34,9 @@ int main() {
   pollfd descriptor{receiver.fd(), POLLIN, 0};
   assert(poll(&descriptor, 1, 1000) == 1);
 
-  UdpDatagram datagram;
-  assert(receiver.receive(datagram));
-  assert(datagram.payload.size() == sizeof(payload));
-  assert(datagram.payload.front() == 1);
-  assert(datagram.payload.back() == 4);
+  const auto datagram = receiver.receive();
+  assert(datagram);
+  assert(datagram->payload.size() == sizeof(payload));
+  assert(datagram->payload.front() == 1);
+  assert(datagram->payload.back() == 4);
 }

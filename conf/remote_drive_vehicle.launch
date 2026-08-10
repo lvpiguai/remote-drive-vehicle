@@ -1,7 +1,7 @@
 <cyber>
   <component>
     <name>remote_drive_vehicle</name>
-    <dag_conf>/apollo/modules/remote_drive_vehicle/apollo/remote_drive_vehicle.dag</dag_conf>
+    <dag_conf>/apollo/modules/remote_drive_vehicle/conf/remote_drive_vehicle.dag</dag_conf>
     <process_name>remote_drive_vehicle</process_name>
   </component>
 </cyber>
