@@ -6,26 +6,27 @@ namespace pb = remote_drive::protocol;
 
 constexpr auto kRemoteControlTimeout = std::chrono::milliseconds(1500);
 
-}  // namespace
+} // namespace
 
 // 校验并更新会话
-bool VehicleControlSession::accept(
+bool VehicleControlSession::acceptControlCommand(
     const pb::RemoteDriveControlCommand &command, std::uint32_t sequence,
-    ControllerId source, Clock::time_point now) {
-  // 空闲时只允许 ENTER 建立会话
-  if (!active_) {
-    if (command.remote_mode() != pb::REMOTE_MODE_ENTER || sequence == 0) {
+    ControllerSource source, Clock::time_point now) {
+  // 无会话时只允许 ENTER 建立新的控制会话
+  if (!has_controller_) {
+    if (command.remote_mode_request() != pb::REMOTE_MODE_REQUEST_ENTER) {
       return false;
     }
-    controller_ = source;
-    controller_id_ = command.cockpit_id();
-    last_sequence_ = 0;
+    controller_source_ = source;
+    cockpit_id_ = command.cockpit_id();
+    last_sequence_ = sequence;
     last_control_time_ = now;
-    active_ = true;
+    has_controller_ = true;
+    return true;
   }
 
-  // 只接受当前驾驶舱的递增序号
-  if (source != *controller_ || command.cockpit_id() != controller_id_) {
+  // 有会话时只接受当前控制者的递增序号
+  if (source != *controller_source_ || command.cockpit_id() != cockpit_id_) {
     return false;
   }
   if (sequence <= last_sequence_) {
@@ -33,8 +34,8 @@ bool VehicleControlSession::accept(
   }
 
   // EXIT 转发后立即释放会话
-  if (command.remote_mode() == pb::REMOTE_MODE_EXIT) {
-    clear();
+  if (command.remote_mode_request() == pb::REMOTE_MODE_REQUEST_EXIT) {
+    reset();
     return true;
   }
 
@@ -43,38 +44,30 @@ bool VehicleControlSession::accept(
   return true;
 }
 
-// 检查会话超时
-std::optional<pb::RemoteDriveControlCommand>
-VehicleControlSession::checkTimeout(Clock::time_point now) {
-  // 空闲或未超时时无需退出
-  if (!active_) return std::nullopt;
-  if (now - last_control_time_ < kRemoteControlTimeout) return std::nullopt;
-
-  // 超时后只生成一次退出请求
-  return leaveRemote();
+// 当前控制会话是否超时
+bool VehicleControlSession::controlTimedOut(Clock::time_point now) const {
+  return has_controller_ && now - last_control_time_ >= kRemoteControlTimeout;
 }
 
 // 主动结束会话
-std::optional<pb::RemoteDriveControlCommand> VehicleControlSession::stop() {
-  if (!active_) return std::nullopt;
-  return leaveRemote();
-}
+std::optional<pb::RemoteDriveControlCommand>
+VehicleControlSession::stopRemoteControl() {
+  if (!has_controller_)
+    return std::nullopt;
 
-// 生成退出请求
-pb::RemoteDriveControlCommand VehicleControlSession::leaveRemote() {
   // 先生成退出请求，再清空会话
   pb::RemoteDriveControlCommand exit_command;
-  exit_command.set_cockpit_id(controller_id_);
-  exit_command.set_remote_mode(pb::REMOTE_MODE_EXIT);
-  clear();
+  exit_command.set_cockpit_id(cockpit_id_);
+  exit_command.set_remote_mode_request(pb::REMOTE_MODE_REQUEST_EXIT);
+  reset();
   return exit_command;
 }
 
-// 清空会话状态
-void VehicleControlSession::clear() {
-  active_ = false;
-  controller_.reset();
-  controller_id_.clear();
+// 清空状态
+void VehicleControlSession::reset() {
+  has_controller_ = false;
+  controller_source_.reset();
+  cockpit_id_.clear();
   last_sequence_ = 0;
   last_control_time_ = {};
 }

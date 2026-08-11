@@ -22,14 +22,14 @@ constexpr std::size_t kMaxVehicleIdLength = 19;
 constexpr char kControlChannel[] = "/remote_drive/control_cmd";
 
 // 解析驾驶舱端点
-bool parseEndpoint(const UdpEndpoint &config, sockaddr_in &endpoint) {
-  endpoint = {};
-  endpoint.sin_family = AF_INET;
+bool parseCockpitAddress(const UdpEndpoint &config, sockaddr_in &address) {
+  address = {};
+  address.sin_family = AF_INET;
   if (config.port() == 0 || config.port() > 65535 ||
-      inet_pton(AF_INET, config.ip().c_str(), &endpoint.sin_addr) != 1) {
+      inet_pton(AF_INET, config.ip().c_str(), &address.sin_addr) != 1) {
     return false;
   }
-  endpoint.sin_port = htons(static_cast<std::uint16_t>(config.port()));
+  address.sin_port = htons(static_cast<std::uint16_t>(config.port()));
   return true;
 }
 
@@ -40,13 +40,14 @@ bool validVehicleId(const std::string &vehicle_id) {
 }
 
 // 生成会话来源标识
-VehicleControlSession::ControllerId controllerId(const sockaddr_in &address) {
+VehicleControlSession::ControllerSource controllerSource(
+    const sockaddr_in &address) {
   return (static_cast<std::uint64_t>(address.sin_addr.s_addr) << 16) |
          address.sin_port;
 }
 
 // 比较 UDP 端点
-bool sameEndpoint(const sockaddr_in &left, const sockaddr_in &right) {
+bool sameAddress(const sockaddr_in &left, const sockaddr_in &right) {
   return left.sin_family == right.sin_family &&
          left.sin_addr.s_addr == right.sin_addr.s_addr &&
          left.sin_port == right.sin_port;
@@ -64,7 +65,7 @@ RemoteDriveComponent::~RemoteDriveComponent() {
 
   // 正常关闭时退出活动会话
   if (control_writer_) {
-    if (const auto exit_command = session_.stop()) {
+    if (const auto exit_command = session_.stopRemoteControl()) {
       control_writer_->Write(*exit_command);
     }
   }
@@ -111,12 +112,12 @@ bool RemoteDriveComponent::loadConfig() {
   }
 
   // 解析驾驶舱白名单
-  std::vector<sockaddr_in> endpoints;
-  endpoints.reserve(config.cockpits_size());
+  std::vector<sockaddr_in> cockpit_addresses;
+  cockpit_addresses.reserve(config.cockpits_size());
   for (const auto &cockpit : config.cockpits()) {
-    sockaddr_in endpoint{};
-    if (!parseEndpoint(cockpit, endpoint)) return false;
-    endpoints.push_back(endpoint);
+    sockaddr_in cockpit_address{};
+    if (!parseCockpitAddress(cockpit, cockpit_address)) return false;
+    cockpit_addresses.push_back(cockpit_address);
   }
 
   // 保存运行参数
@@ -125,7 +126,7 @@ bool RemoteDriveComponent::loadConfig() {
   heartbeat_interval_ =
       std::chrono::milliseconds(config.heartbeat_interval_ms());
   state_interval_ = std::chrono::milliseconds(config.state_interval_ms());
-  cockpit_endpoints_ = std::move(endpoints);
+  cockpit_addresses_ = std::move(cockpit_addresses);
   return true;
 }
 
@@ -145,8 +146,10 @@ void RemoteDriveComponent::runLoop() {
     const auto now = Clock::now();
 
     // 驾驶舱断联时只发送一次退出请求
-    if (const auto timeout_exit_command = session_.checkTimeout(now)) {
-      control_writer_->Write(*timeout_exit_command);
+    if (session_.controlTimedOut(now)) {
+      if (const auto exit_command = session_.stopRemoteControl()) {
+        control_writer_->Write(*exit_command);
+      }
     }
 
     // 周期发送车辆心跳
@@ -171,9 +174,9 @@ void RemoteDriveComponent::receiveControlPacket() {
 
   // 校验驾驶舱来源
   const bool known_cockpit =
-      std::any_of(cockpit_endpoints_.begin(), cockpit_endpoints_.end(),
-                  [&](const sockaddr_in &endpoint) {
-                    return sameEndpoint(endpoint, datagram->source);
+      std::any_of(cockpit_addresses_.begin(), cockpit_addresses_.end(),
+                  [&](const sockaddr_in &cockpit_address) {
+                    return sameAddress(cockpit_address, datagram->source);
                   });
   if (!known_cockpit) return;
 
@@ -186,9 +189,10 @@ void RemoteDriveComponent::receiveControlPacket() {
   }
 
   // 通过会话校验后立即转发
-  const auto controller = controllerId(datagram->source);
+  const auto source = controllerSource(datagram->source);
   const auto &control_command = packet->control();
-  if (session_.accept(control_command, packet->sequence(), controller)) {
+  if (session_.acceptControlCommand(control_command, packet->sequence(),
+                                    source)) {
     control_writer_->Write(control_command);
   }
 }
@@ -200,8 +204,8 @@ void RemoteDriveComponent::sendHeartbeat() {
       protocol_codec::encodeHeartbeat(vehicle_id_, heartbeat_seq_++);
   if (packet.empty()) return;
 
-  for (const auto &endpoint : cockpit_endpoints_) {
-    udp_channel_.send(endpoint, packet.data(), packet.size());
+  for (const auto &cockpit_address : cockpit_addresses_) {
+    udp_channel_.send(cockpit_address, packet.data(), packet.size());
   }
 }
 
@@ -213,8 +217,8 @@ void RemoteDriveComponent::sendState() {
       protocol_codec::encodeDrivingState(state, state_seq_++);
   if (packet.empty()) return;
 
-  for (const auto &endpoint : cockpit_endpoints_) {
-    udp_channel_.send(endpoint, packet.data(), packet.size());
+  for (const auto &cockpit_address : cockpit_addresses_) {
+    udp_channel_.send(cockpit_address, packet.data(), packet.size());
   }
 }
 
@@ -226,7 +230,7 @@ protocol::ChassisState RemoteDriveComponent::vehicleState() const {
 
   // 补充网关会话信息
   state.set_vehicle_id(vehicle_id_);
-  state.set_controller_id(session_.controllerId());
+  state.set_controller_id(session_.cockpitId());
 
   // 无底盘状态时默认驻车
   if (!latest_state_) {

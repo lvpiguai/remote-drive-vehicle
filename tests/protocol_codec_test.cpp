@@ -38,7 +38,7 @@ void testControlRoundTrip() {
   input.set_brake_percent(2);
   input.set_gear(pb::GEAR_DRIVE_1);
   input.set_bucket(pb::BUCKET_DOWN);
-  input.set_remote_mode(pb::REMOTE_MODE_ENTER);
+  input.set_remote_mode_request(pb::REMOTE_MODE_REQUEST_ENTER);
   input.set_horn(pb::SWITCH_ON);
   input.set_light_near(pb::SWITCH_ON);
   input.set_diff_lock(pb::SWITCH_ON);
@@ -54,7 +54,7 @@ void testControlRoundTrip() {
   assert(output->control().accelerator_percent() == 35);
   assert(output->control().gear() == pb::GEAR_DRIVE_1);
   assert(output->control().bucket() == pb::BUCKET_DOWN);
-  assert(output->control().remote_mode() == pb::REMOTE_MODE_ENTER);
+  assert(output->control().remote_mode_request() == pb::REMOTE_MODE_REQUEST_ENTER);
   assert(output->control().horn() == pb::SWITCH_ON);
   assert(output->control().light_near() == pb::SWITCH_ON);
   assert(output->control().diff_lock() == pb::SWITCH_ON);
@@ -123,7 +123,7 @@ void testVehicleControlSession() {
 
   pb::RemoteDriveControlCommand command;
   command.set_cockpit_id("cockpit_01");
-  command.set_remote_mode(pb::REMOTE_MODE_ENTER);
+  command.set_remote_mode_request(pb::REMOTE_MODE_REQUEST_ENTER);
   command.set_parking(pb::SWITCH_OFF);
   command.set_gear(pb::GEAR_DRIVE_1);
   command.set_bucket(pb::BUCKET_UP);
@@ -146,35 +146,45 @@ void testVehicleControlSession() {
   command.set_light_fog(pb::SWITCH_ON);
   command.set_diff_lock(pb::SWITCH_ON);
 
-  assert(session.accept(command, 10, 1, start));
-  assert(session.controllerId() == "cockpit_01");
+  assert(session.acceptControlCommand(command, 10, 1, start));
+  assert(session.cockpitId() == "cockpit_01");
 
   // NO_CTL 作为原始控制指令继续发布给真实底盘通道
   command.set_window_wiper(pb::SWITCH_NO_CONTROL);
   command.set_light_near(pb::SWITCH_NO_CONTROL);
-  assert(session.accept(command, 11, 1, start));
+  assert(session.acceptControlCommand(command, 11, 1, start));
 
   command.set_parking(pb::SWITCH_ON);
-  assert(session.accept(command, 12, 1, start));
+  assert(session.acceptControlCommand(command, 12, 1, start));
 
-  assert(!session.accept(command, 9, 1, start));
-  assert(!session.accept(command, 13, 2, start));
+  assert(!session.acceptControlCommand(command, 9, 1, start));
+  assert(!session.acceptControlCommand(command, 13, 2, start));
 
-  assert(!session.checkTimeout(start + std::chrono::milliseconds(1499)));
-  const auto timeout_exit =
-      session.checkTimeout(start + std::chrono::milliseconds(1500));
+  assert(!session.controlTimedOut(start + std::chrono::milliseconds(1499)));
+  assert(session.controlTimedOut(start + std::chrono::milliseconds(1500)));
+  const auto timeout_exit = session.stopRemoteControl();
   assert(timeout_exit);
   assert(timeout_exit->cockpit_id() == "cockpit_01");
-  assert(timeout_exit->remote_mode() == pb::REMOTE_MODE_EXIT);
+  assert(timeout_exit->remote_mode_request() == pb::REMOTE_MODE_REQUEST_EXIT);
   assert(timeout_exit->brake_percent() == 0);
   assert(timeout_exit->parking() == pb::SWITCH_NO_CONTROL);
   assert(timeout_exit->remote_emergency() == pb::SWITCH_NO_CONTROL);
-  command.set_remote_mode(pb::REMOTE_MODE_ENTER);
+  command.set_remote_mode_request(pb::REMOTE_MODE_REQUEST_ENTER);
   command.set_remote_emergency(pb::SWITCH_OFF);
-  assert(session.accept(command, 12, 2, start + std::chrono::seconds(2)));
-  command.set_remote_mode(pb::REMOTE_MODE_EXIT);
-  assert(session.accept(command, 13, 2, start + std::chrono::seconds(2)));
-  assert(session.controllerId().empty());
+  assert(session.acceptControlCommand(command, 12, 2,
+                                      start + std::chrono::seconds(2)));
+  command.set_remote_mode_request(pb::REMOTE_MODE_REQUEST_EXIT);
+  assert(session.acceptControlCommand(command, 13, 2,
+                                      start + std::chrono::seconds(2)));
+  assert(session.cockpitId().empty());
+
+  command.set_remote_mode_request(pb::REMOTE_MODE_REQUEST_ENTER);
+  assert(session.acceptControlCommand(command, 0, 3,
+                                      start + std::chrono::seconds(3)));
+  assert(!session.acceptControlCommand(command, 0, 3,
+                                       start + std::chrono::seconds(3)));
+  assert(session.acceptControlCommand(command, 1, 3,
+                                      start + std::chrono::seconds(3)));
 }
 
 } // namespace

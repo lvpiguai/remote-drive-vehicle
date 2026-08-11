@@ -21,6 +21,8 @@ public:
 
   UdpChannel(const UdpChannel &) = delete;
   UdpChannel &operator=(const UdpChannel &) = delete;
+  UdpChannel(UdpChannel &&) = delete;
+  UdpChannel &operator=(UdpChannel &&) = delete;
 
   // 创建并绑定本地 UDP 端口
   bool bindPort(std::uint16_t port);

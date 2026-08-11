@@ -61,7 +61,7 @@ class RemoteDriveComponent final
   std::uint16_t local_port_ = 0;
   std::chrono::milliseconds heartbeat_interval_{1000};
   std::chrono::milliseconds state_interval_{100};
-  std::vector<sockaddr_in> cockpit_endpoints_;
+  std::vector<sockaddr_in> cockpit_addresses_;
 
   // UDP 工作线程状态
   UdpChannel udp_channel_;

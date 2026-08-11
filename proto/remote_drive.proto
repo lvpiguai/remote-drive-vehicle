@@ -24,10 +24,10 @@ enum DriveMode {
   DRIVE_MODE_REMOTE = 3;
 }
 
-enum RemoteMode {
-  REMOTE_MODE_NO_CONTROL = 0;
-  REMOTE_MODE_ENTER = 1;
-  REMOTE_MODE_EXIT = 2;
+enum RemoteModeRequest {
+  REMOTE_MODE_REQUEST_NONE = 0;
+  REMOTE_MODE_REQUEST_ENTER = 1;
+  REMOTE_MODE_REQUEST_EXIT = 2;
 }
 
 enum SwitchCommand {
@@ -47,7 +47,7 @@ message RemoteDriveControlCommand {
   double brake_percent = 4;
   Gear gear = 5;
   Bucket bucket = 6;
-  RemoteMode remote_mode = 7;
+  RemoteModeRequest remote_mode_request = 7;
   SwitchCommand parking = 8;
   SwitchCommand horn = 9;
   SwitchCommand spray = 10;

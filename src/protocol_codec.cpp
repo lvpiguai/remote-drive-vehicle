@@ -37,7 +37,7 @@ bool validControlCommand(const pb::RemoteDriveControlCommand &command) {
          command.brake_percent() <= 100.0 &&
          pb::Gear_IsValid(command.gear()) &&
          pb::Bucket_IsValid(command.bucket()) &&
-         pb::RemoteMode_IsValid(command.remote_mode()) &&
+         pb::RemoteModeRequest_IsValid(command.remote_mode_request()) &&
          validSwitch(command.parking()) && validSwitch(command.horn()) &&
          validSwitch(command.spray()) &&
          validSwitch(command.remote_emergency()) &&
