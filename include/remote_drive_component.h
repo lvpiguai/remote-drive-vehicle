@@ -43,9 +43,6 @@ class RemoteDriveComponent final
   // 校验并转发控制包
   void receiveControlPacket();
 
-  // 发送车辆心跳
-  void sendHeartbeat();
-
   // 发送车辆状态
   void sendState();
 
@@ -59,7 +56,6 @@ class RemoteDriveComponent final
   // 当前车辆的静态部署配置
   std::string vehicle_id_;
   std::uint16_t local_port_ = 0;
-  std::chrono::milliseconds heartbeat_interval_{1000};
   std::chrono::milliseconds state_interval_{100};
   std::vector<sockaddr_in> cockpit_addresses_;
 
@@ -74,7 +70,6 @@ class RemoteDriveComponent final
   std::optional<protocol::ChassisState> latest_state_;
 
   // UDP 发送序号
-  std::uint32_t heartbeat_seq_ = 1;
   std::uint32_t state_seq_ = 1;
 };
 

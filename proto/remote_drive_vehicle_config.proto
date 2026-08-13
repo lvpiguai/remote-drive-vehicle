@@ -20,7 +20,9 @@ message RemoteDriveVehicleConfig {
   // 字段 4 曾用于控制 Channel，保留编号避免后续误复用
   reserved 4;
 
-  // 车辆对外发送周期
-  optional uint32 heartbeat_interval_ms = 5 [default = 1000];
+  // 字段 5 曾用于心跳周期，保留编号避免后续误复用
+  reserved 5;
+
+  // 车辆状态对外发送周期
   optional uint32 state_interval_ms = 6 [default = 100];
 }

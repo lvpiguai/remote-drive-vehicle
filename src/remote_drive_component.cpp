@@ -107,7 +107,7 @@ bool RemoteDriveComponent::loadConfig() {
 
   if (!validVehicleId(config.vehicle_id()) || config.local_port() == 0 ||
       config.local_port() > 65535 || config.cockpits().empty() ||
-      config.heartbeat_interval_ms() == 0 || config.state_interval_ms() == 0) {
+      config.state_interval_ms() == 0) {
     return false;
   }
 
@@ -123,8 +123,6 @@ bool RemoteDriveComponent::loadConfig() {
   // 保存运行参数
   vehicle_id_ = config.vehicle_id();
   local_port_ = static_cast<std::uint16_t>(config.local_port());
-  heartbeat_interval_ =
-      std::chrono::milliseconds(config.heartbeat_interval_ms());
   state_interval_ = std::chrono::milliseconds(config.state_interval_ms());
   cockpit_addresses_ = std::move(cockpit_addresses);
   return true;
@@ -132,7 +130,6 @@ bool RemoteDriveComponent::loadConfig() {
 
 // 运行 UDP 工作循环
 void RemoteDriveComponent::runLoop() {
-  auto last_heartbeat = Clock::now() - heartbeat_interval_;
   auto last_state = Clock::now() - state_interval_;
 
   while (running_) {
@@ -150,12 +147,6 @@ void RemoteDriveComponent::runLoop() {
       if (const auto exit_command = session_.stopRemoteControl()) {
         control_writer_->Write(*exit_command);
       }
-    }
-
-    // 周期发送车辆心跳
-    if (now - last_heartbeat >= heartbeat_interval_) {
-      sendHeartbeat();
-      last_heartbeat = now;
     }
 
     // 周期发送车辆状态
@@ -194,18 +185,6 @@ void RemoteDriveComponent::receiveControlPacket() {
   if (session_.acceptControlCommand(control_command, packet->sequence(),
                                     source)) {
     control_writer_->Write(control_command);
-  }
-}
-
-// 发送车辆心跳
-void RemoteDriveComponent::sendHeartbeat() {
-  // 编码并广播心跳
-  const auto packet =
-      protocol_codec::encodeHeartbeat(vehicle_id_, heartbeat_seq_++);
-  if (packet.empty()) return;
-
-  for (const auto &cockpit_address : cockpit_addresses_) {
-    udp_channel_.send(cockpit_address, packet.data(), packet.size());
   }
 }
 

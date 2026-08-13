@@ -12,10 +12,6 @@ namespace protocol_codec {
 
 using PacketBytes = std::vector<std::uint8_t>;
 
-// 编码车辆心跳
-PacketBytes encodeHeartbeat(const std::string &vehicle_id,
-                            std::uint32_t sequence);
-
 // 编码控制命令
 PacketBytes encodeControlCommand(
     const remote_drive::protocol::RemoteDriveControlCommand &command,

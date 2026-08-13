@@ -11,24 +11,6 @@ namespace {
 
 namespace pb = remote_drive::protocol;
 
-// 验证心跳包编解码
-void testHeartbeatRoundTrip() {
-  const auto packet = protocol_codec::encodeHeartbeat("truck_01", 3);
-  const auto output =
-      protocol_codec::decodePacket(packet.data(), packet.size());
-  assert(output);
-  assert(output->body_case() == pb::ProtocolPacket::kHeartbeat);
-  assert(output->sequence() == 3);
-  assert(output->heartbeat().vehicle_id() == "truck_01");
-
-  auto invalid = packet;
-  invalid[0] = 0;
-  assert(!protocol_codec::decodePacket(invalid.data(), invalid.size()));
-  assert(!protocol_codec::decodePacket(packet.data(), 1));
-
-  assert(protocol_codec::encodeHeartbeat("", 4).empty());
-}
-
 // 验证控制包编解码
 void testControlRoundTrip() {
   pb::RemoteDriveControlCommand input;
@@ -191,7 +173,6 @@ void testVehicleControlSession() {
 
 // 运行协议编解码与会话测试
 int main() {
-  testHeartbeatRoundTrip();
   testControlRoundTrip();
   testStateRoundTrip();
   testVehicleControlSession();

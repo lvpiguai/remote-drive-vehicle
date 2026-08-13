@@ -70,8 +70,6 @@ bool validDrivingState(const pb::ChassisState &state) {
 // 校验包体字段
 bool validBody(const pb::ProtocolPacket &packet) {
   switch (packet.body_case()) {
-    case pb::ProtocolPacket::kHeartbeat:
-      return validId(packet.heartbeat().vehicle_id(), true);
     case pb::ProtocolPacket::kControl:
       return validControlCommand(packet.control());
     case pb::ProtocolPacket::kState:
@@ -97,17 +95,6 @@ PacketBytes serialize(const pb::ProtocolPacket &packet) {
 }
 
 } // namespace
-
-// 编码车辆心跳
-PacketBytes encodeHeartbeat(const std::string &vehicle_id,
-                            std::uint32_t sequence) {
-  if (!validId(vehicle_id, true)) return {};
-
-  pb::ProtocolPacket packet;
-  fillHeader(packet, sequence);
-  packet.mutable_heartbeat()->set_vehicle_id(vehicle_id);
-  return serialize(packet);
-}
 
 // 编码控制命令
 PacketBytes encodeControlCommand(const pb::RemoteDriveControlCommand &command,

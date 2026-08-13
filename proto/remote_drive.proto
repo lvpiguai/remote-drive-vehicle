@@ -36,10 +36,6 @@ enum SwitchCommand {
   SWITCH_ON = 2;
 }
 
-message Heartbeat {
-  string vehicle_id = 1;
-}
-
 message RemoteDriveControlCommand {
   string cockpit_id = 1;
   double steering_angle = 2;
@@ -99,11 +95,12 @@ message ChassisState {
 }
 
 message ProtocolPacket {
+  reserved 10;
+
   uint32 magic = 1;
   uint32 sequence = 2;
 
   oneof body {
-    Heartbeat heartbeat = 10;
     RemoteDriveControlCommand control = 11;
     ChassisState state = 12;
   }
