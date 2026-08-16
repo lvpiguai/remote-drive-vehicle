@@ -11,9 +11,21 @@ namespace {
 
 namespace pb = remote_drive::protocol;
 
-// 验证控制包编解码
-void testControlRoundTrip() {
-  pb::RemoteDriveControlCommand input;
+protocol_codec::PacketBytes controlPacketBytes(
+    const pb::ControlCommand &command, std::uint32_t sequence) {
+  pb::ProtocolPacket packet;
+  packet.set_magic(0x52445550);
+  packet.set_sequence(sequence);
+  packet.mutable_control()->CopyFrom(command);
+
+  std::string bytes;
+  assert(packet.SerializeToString(&bytes));
+  return {bytes.begin(), bytes.end()};
+}
+
+// 验证控制包解码
+void testControlDecoding() {
+  pb::ControlCommand input;
   input.set_cockpit_id("cockpit_01");
   input.set_steering_angle(-12.5);
   input.set_accelerator_percent(35);
@@ -25,7 +37,7 @@ void testControlRoundTrip() {
   input.set_light_near(pb::SWITCH_ON);
   input.set_diff_lock(pb::SWITCH_ON);
 
-  const auto packet = protocol_codec::encodeControlCommand(input, 42);
+  const auto packet = controlPacketBytes(input, 42);
   const auto output =
       protocol_codec::decodePacket(packet.data(), packet.size());
   assert(output);
@@ -47,24 +59,28 @@ void testControlRoundTrip() {
   assert(!protocol_codec::decodePacket(packet.data(), packet.size() - 1));
 
   input.clear_cockpit_id();
-  assert(protocol_codec::encodeControlCommand(input, 43).empty());
+  auto invalid_fields = controlPacketBytes(input, 43);
+  assert(!protocol_codec::decodePacket(invalid_fields.data(),
+                                       invalid_fields.size()));
 
   input.set_cockpit_id("cockpit_01");
   input.set_steering_angle(std::numeric_limits<double>::quiet_NaN());
-  assert(protocol_codec::encodeControlCommand(input, 44).empty());
+  invalid_fields = controlPacketBytes(input, 44);
+  assert(!protocol_codec::decodePacket(invalid_fields.data(),
+                                       invalid_fields.size()));
 
   // 拒绝线上非法字段
-  auto invalid_fields = *output;
-  invalid_fields.mutable_control()->set_accelerator_percent(101);
+  auto invalid_packet = *output;
+  invalid_packet.mutable_control()->set_accelerator_percent(101);
   std::string invalid_bytes;
-  assert(invalid_fields.SerializeToString(&invalid_bytes));
+  assert(invalid_packet.SerializeToString(&invalid_bytes));
   assert(!protocol_codec::decodePacket(
       reinterpret_cast<const std::uint8_t *>(invalid_bytes.data()),
       invalid_bytes.size()));
 }
 
-// 验证状态包编解码
-void testStateRoundTrip() {
+// 验证状态包编码
+void testStateEncoding() {
   pb::ChassisState input;
   input.set_vehicle_id("truck_01");
   input.set_controller_id("cockpit_02");
@@ -73,28 +89,28 @@ void testStateRoundTrip() {
   input.set_drive_mode(pb::DRIVE_MODE_REMOTE);
   input.set_gear(pb::GEAR_DRIVE_1);
 
-  const auto packet = protocol_codec::encodeDrivingState(input, 7);
-  const auto output =
-      protocol_codec::decodePacket(packet.data(), packet.size());
-  assert(output);
-  assert(output->body_case() == pb::ProtocolPacket::kState);
-  assert(output->sequence() == 7);
-  assert(output->state().steering_angle() == 8.25);
-  assert(output->state().speed() == 12);
-  assert(output->state().vehicle_id() == "truck_01");
-  assert(output->state().controller_id() == "cockpit_02");
-  assert(output->state().drive_mode() == pb::DRIVE_MODE_REMOTE);
+  const auto bytes = protocol_codec::encodeChassisState(input, 7);
+  assert(!bytes.empty());
 
-  auto invalid = packet;
-  invalid[0] = 0;
-  assert(!protocol_codec::decodePacket(invalid.data(), invalid.size()));
+  pb::ProtocolPacket packet;
+  assert(packet.ParseFromArray(bytes.data(), static_cast<int>(bytes.size())));
+  assert(packet.magic() == 0x52445550);
+  assert(packet.body_case() == pb::ProtocolPacket::kState);
+  assert(packet.sequence() == 7);
+  assert(packet.state().steering_angle() == 8.25);
+  assert(packet.state().speed() == 12);
+  assert(packet.state().vehicle_id() == "truck_01");
+  assert(packet.state().controller_id() == "cockpit_02");
+  assert(packet.state().drive_mode() == pb::DRIVE_MODE_REMOTE);
+
+  assert(protocol_codec::decodePacket(bytes.data(), bytes.size()));
 
   input.clear_vehicle_id();
-  assert(protocol_codec::encodeDrivingState(input, 8).empty());
+  assert(protocol_codec::encodeChassisState(input, 8).empty());
 
   input.set_vehicle_id("truck_01");
   input.set_speed(std::numeric_limits<double>::infinity());
-  assert(protocol_codec::encodeDrivingState(input, 9).empty());
+  assert(protocol_codec::encodeChassisState(input, 9).empty());
 }
 
 // 验证车端网关流程
@@ -103,7 +119,7 @@ void testVehicleControlSession() {
   const auto start = Clock::time_point(std::chrono::seconds(1));
   VehicleControlSession session;
 
-  pb::RemoteDriveControlCommand command;
+  pb::ControlCommand command;
   command.set_cockpit_id("cockpit_01");
   command.set_remote_mode_request(pb::REMOTE_MODE_REQUEST_ENTER);
   command.set_parking(pb::SWITCH_OFF);
@@ -142,8 +158,8 @@ void testVehicleControlSession() {
   assert(!session.acceptControlCommand(command, 9, 1, start));
   assert(!session.acceptControlCommand(command, 13, 2, start));
 
-  assert(!session.controlTimedOut(start + std::chrono::milliseconds(1499)));
-  assert(session.controlTimedOut(start + std::chrono::milliseconds(1500)));
+  assert(!session.controlTimedOut(start + std::chrono::milliseconds(499)));
+  assert(session.controlTimedOut(start + std::chrono::milliseconds(500)));
   const auto timeout_exit = session.stopRemoteControl();
   assert(timeout_exit);
   assert(timeout_exit->cockpit_id() == "cockpit_01");
@@ -173,7 +189,7 @@ void testVehicleControlSession() {
 
 // 运行协议编解码与会话测试
 int main() {
-  testControlRoundTrip();
-  testStateRoundTrip();
+  testControlDecoding();
+  testStateEncoding();
   testVehicleControlSession();
 }

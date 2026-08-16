@@ -78,7 +78,7 @@ bool RemoteDriveComponent::Init() {
   if (!udp_channel_.bindPort(local_port_)) return false;
 
   // 创建底盘控制 Writer
-  control_writer_ = node_->CreateWriter<protocol::RemoteDriveControlCommand>(
+  control_writer_ = node_->CreateWriter<protocol::ControlCommand>(
       kControlChannel);
   if (!control_writer_) return false;
 
@@ -172,8 +172,8 @@ void RemoteDriveComponent::receiveControlPacket() {
   if (!known_cockpit) return;
 
   // 解码控制包
-  const auto packet = protocol_codec::decodePacket(datagram->payload.data(),
-                                                   datagram->payload.size());
+  const auto packet = protocol_codec::decodePacket(
+      datagram->payload.data(), datagram->payload.size());
   if (!packet ||
       packet->body_case() != protocol::ProtocolPacket::kControl) {
     return;
@@ -193,7 +193,7 @@ void RemoteDriveComponent::sendState() {
   // 编码并广播状态
   const protocol::ChassisState state = vehicleState();
   const auto packet =
-      protocol_codec::encodeDrivingState(state, state_seq_++);
+      protocol_codec::encodeChassisState(state, state_seq_++);
   if (packet.empty()) return;
 
   for (const auto &cockpit_address : cockpit_addresses_) {

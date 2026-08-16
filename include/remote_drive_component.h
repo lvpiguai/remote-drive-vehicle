@@ -50,7 +50,7 @@ class RemoteDriveComponent final
   protocol::ChassisState vehicleState() const;
 
   // 底盘控制 Writer
-  std::shared_ptr<apollo::cyber::Writer<protocol::RemoteDriveControlCommand>>
+  std::shared_ptr<apollo::cyber::Writer<protocol::ControlCommand>>
       control_writer_;
 
   // 当前车辆的静态部署配置

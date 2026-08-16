@@ -15,7 +15,7 @@ class VehicleControlSession {
 
   // 校验并接收控制命令
   bool acceptControlCommand(
-      const remote_drive::protocol::RemoteDriveControlCommand &command,
+      const remote_drive::protocol::ControlCommand &command,
       std::uint32_t sequence, ControllerSource source,
       Clock::time_point now = Clock::now());
 
@@ -23,7 +23,7 @@ class VehicleControlSession {
   bool controlTimedOut(Clock::time_point now = Clock::now()) const;
 
   // 主动结束会话
-  std::optional<remote_drive::protocol::RemoteDriveControlCommand>
+  std::optional<remote_drive::protocol::ControlCommand>
   stopRemoteControl();
 
   const std::string &cockpitId() const { return cockpit_id_; }

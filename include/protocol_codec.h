@@ -12,13 +12,8 @@ namespace protocol_codec {
 
 using PacketBytes = std::vector<std::uint8_t>;
 
-// 编码控制命令
-PacketBytes encodeControlCommand(
-    const remote_drive::protocol::RemoteDriveControlCommand &command,
-    std::uint32_t sequence);
-
 // 编码车辆状态
-PacketBytes encodeDrivingState(
+PacketBytes encodeChassisState(
     const remote_drive::protocol::ChassisState &state, std::uint32_t sequence);
 
 // 解码并校验协议包

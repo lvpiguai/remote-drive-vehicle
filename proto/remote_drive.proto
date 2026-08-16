@@ -36,7 +36,7 @@ enum SwitchCommand {
   SWITCH_ON = 2;
 }
 
-message RemoteDriveControlCommand {
+message ControlCommand {
   string cockpit_id = 1;
   double steering_angle = 2;
   double accelerator_percent = 3;
@@ -101,7 +101,7 @@ message ProtocolPacket {
   uint32 sequence = 2;
 
   oneof body {
-    RemoteDriveControlCommand control = 11;
+    ControlCommand control = 11;
     ChassisState state = 12;
   }
 }

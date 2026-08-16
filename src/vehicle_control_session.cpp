@@ -4,13 +4,13 @@ namespace {
 
 namespace pb = remote_drive::protocol;
 
-constexpr auto kRemoteControlTimeout = std::chrono::milliseconds(1500);
+constexpr auto kRemoteControlTimeout = std::chrono::milliseconds(500);
 
 } // namespace
 
 // 校验并更新会话
 bool VehicleControlSession::acceptControlCommand(
-    const pb::RemoteDriveControlCommand &command, std::uint32_t sequence,
+    const pb::ControlCommand &command, std::uint32_t sequence,
     ControllerSource source, Clock::time_point now) {
   // 无会话时只允许 ENTER 建立新的控制会话
   if (!has_controller_) {
@@ -50,13 +50,13 @@ bool VehicleControlSession::controlTimedOut(Clock::time_point now) const {
 }
 
 // 主动结束会话
-std::optional<pb::RemoteDriveControlCommand>
+std::optional<pb::ControlCommand>
 VehicleControlSession::stopRemoteControl() {
   if (!has_controller_)
     return std::nullopt;
 
   // 先生成退出请求，再清空会话
-  pb::RemoteDriveControlCommand exit_command;
+  pb::ControlCommand exit_command;
   exit_command.set_cockpit_id(cockpit_id_);
   exit_command.set_remote_mode_request(pb::REMOTE_MODE_REQUEST_EXIT);
   reset();
