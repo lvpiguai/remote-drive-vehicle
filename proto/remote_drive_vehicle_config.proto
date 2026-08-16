@@ -24,5 +24,5 @@ message RemoteDriveVehicleConfig {
   reserved 5;
 
   // 车辆状态对外发送周期
-  optional uint32 state_interval_ms = 6 [default = 100];
+  optional uint32 state_interval_ms = 6 [default = 20];
 }

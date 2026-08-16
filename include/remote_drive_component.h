@@ -56,7 +56,7 @@ class RemoteDriveComponent final
   // 当前车辆的静态部署配置
   std::string vehicle_id_;
   std::uint16_t local_port_ = 0;
-  std::chrono::milliseconds state_interval_{100};
+  std::chrono::milliseconds state_interval_{20};
   std::vector<sockaddr_in> cockpit_addresses_;
 
   // UDP 工作线程状态
