@@ -16,13 +16,13 @@ UdpChannel::~UdpChannel() {
     close(fd_);
 }
 
-// 创建并绑定 UDP socket
+// 创建非阻塞 UDP socket 并绑定本地端口
 bool UdpChannel::bindPort(std::uint16_t port) {
   if (fd_ >= 0)
     return false;
 
   // 创建 socket
-  const int next_fd = socket(AF_INET, SOCK_DGRAM, 0);
+  const int next_fd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0);
   if (next_fd < 0)
     return false;
 
@@ -50,7 +50,7 @@ std::optional<UdpDatagram> UdpChannel::receive() {
   datagram.payload.resize(kReceiveBufferSize);
   socklen_t source_size = sizeof(datagram.source);
   const ssize_t size = recvfrom(
-      fd_, datagram.payload.data(), datagram.payload.size(), MSG_DONTWAIT,
+      fd_, datagram.payload.data(), datagram.payload.size(), 0,
       reinterpret_cast<sockaddr *>(&datagram.source), &source_size);
   if (size <= 0) {
     return std::nullopt;
