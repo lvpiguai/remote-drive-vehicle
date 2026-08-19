@@ -44,8 +44,8 @@ cyber_launch start conf/remote_drive_vehicle.launch
 ```
 
 仓库中的 `conf/vehicle.pb.txt.example` 是部署模板。每辆车使用相同的运行路径，
-但配置内容属于当前车辆，至少需要设置唯一的 `vehicle_id`、UDP 监听端口和允许通信的
-驾驶舱地址。可以在车辆宿主机上维护配置，再挂载到 Apollo 容器：
+但配置内容属于当前车辆，需要设置唯一的 `vehicle_id` 和允许通信的驾驶舱地址。
+可以在车辆宿主机上维护配置，再挂载到 Apollo 容器：
 
 ```text
 /etc/remote-drive/vehicle.pb.txt

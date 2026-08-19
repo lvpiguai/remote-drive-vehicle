@@ -10,9 +10,11 @@ message UdpEndpoint {
 
 // 单辆车的运行时部署配置，由 Cyber Component 在启动时加载
 message RemoteDriveVehicleConfig {
-  // 当前车辆的唯一标识和本地 UDP 监听端口
+  // 当前车辆的唯一标识
   required string vehicle_id = 1;
-  required uint32 local_port = 2;
+
+  // 字段 2 曾用于本地 UDP 端口，保留编号避免后续误复用
+  reserved 2;
 
   // 车辆状态发送目标，同时作为控制包来源白名单
   repeated UdpEndpoint cockpits = 3;
@@ -23,6 +25,6 @@ message RemoteDriveVehicleConfig {
   // 字段 5 曾用于心跳周期，保留编号避免后续误复用
   reserved 5;
 
-  // 车辆状态对外发送周期
-  optional uint32 state_interval_ms = 6 [default = 20];
+  // 字段 6 曾用于车辆状态发送周期，保留编号避免后续误复用
+  reserved 6;
 }

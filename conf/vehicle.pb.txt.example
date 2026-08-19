@@ -1,5 +1,4 @@
 vehicle_id: "truck_01"
-local_port: 7006
 
 cockpits {
   ip: "192.168.10.21"
@@ -10,5 +9,3 @@ cockpits {
   ip: "192.168.10.22"
   port: 7005
 }
-
-state_interval_ms: 20
