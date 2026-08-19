@@ -13,8 +13,8 @@ namespace protocol_codec {
 using PacketBytes = std::vector<std::uint8_t>;
 
 // 编码车辆状态
-PacketBytes encodeChassisState(
-    const remote_drive::protocol::ChassisState &state, std::uint32_t sequence);
+PacketBytes encodeVehicleState(
+    const remote_drive::protocol::VehicleState &state, std::uint32_t sequence);
 
 // 解码并校验协议包
 std::optional<remote_drive::protocol::ProtocolPacket>

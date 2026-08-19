@@ -17,6 +17,8 @@ namespace remote_drive::vehicle {
 namespace {
 
 constexpr std::size_t kMaxVehicleIdLength = 19;
+constexpr std::uint16_t kVehicleUdpPort = 7006;
+constexpr auto kStateInterval = std::chrono::milliseconds(20);
 
 // 底盘控制 Channel
 constexpr char kControlChannel[] = "/remote_drive/control_cmd";
@@ -75,7 +77,7 @@ RemoteDriveComponent::~RemoteDriveComponent() {
 bool RemoteDriveComponent::Init() {
   // 加载配置并绑定 UDP 端口
   if (!loadConfig()) return false;
-  if (!udp_channel_.bindPort(local_port_)) return false;
+  if (!udp_channel_.bindPort(kVehicleUdpPort)) return false;
 
   // 创建底盘控制 Writer
   control_writer_ = node_->CreateWriter<protocol::ControlCommand>(
@@ -84,13 +86,14 @@ bool RemoteDriveComponent::Init() {
 
   // 启动 UDP 工作线程
   running_ = true;
-  udp_worker_ = std::thread(&RemoteDriveComponent::runLoop, this);
+  udp_worker_ =
+      std::thread(&RemoteDriveComponent::runRemoteControlLoop, this);
   return true;
 }
 
 // 缓存底盘状态
 bool RemoteDriveComponent::Proc(
-    const std::shared_ptr<protocol::ChassisState> &state) {
+    const std::shared_ptr<protocol::VehicleState> &state) {
   if (!state) return false;
 
   // 更新共享状态缓存
@@ -105,9 +108,7 @@ bool RemoteDriveComponent::loadConfig() {
   RemoteDriveVehicleConfig config;
   if (!GetProtoConfig(&config) || !config.IsInitialized()) return false;
 
-  if (!validVehicleId(config.vehicle_id()) || config.local_port() == 0 ||
-      config.local_port() > 65535 || config.cockpits().empty() ||
-      config.state_interval_ms() == 0) {
+  if (!validVehicleId(config.vehicle_id()) || config.cockpits().empty()) {
     return false;
   }
 
@@ -122,20 +123,19 @@ bool RemoteDriveComponent::loadConfig() {
 
   // 保存运行参数
   vehicle_id_ = config.vehicle_id();
-  local_port_ = static_cast<std::uint16_t>(config.local_port());
-  state_interval_ = std::chrono::milliseconds(config.state_interval_ms());
   cockpit_addresses_ = std::move(cockpit_addresses);
   return true;
 }
 
-// 运行 UDP 工作循环
-void RemoteDriveComponent::runLoop() {
-  auto last_state = Clock::now() - state_interval_;
+// 运行远控通信循环
+void RemoteDriveComponent::runRemoteControlLoop() {
+  auto last_state_sent = Clock::now() - kStateInterval;
 
   while (running_) {
     // 等待驾驶舱控制包
     pollfd descriptor{udp_channel_.fd(), POLLIN, 0};
-    const int result = poll(&descriptor, 1, 100);
+    const int result =
+        poll(&descriptor, 1, static_cast<int>(kStateInterval.count()));
     if (result > 0 && (descriptor.revents & POLLIN)) {
       receiveControlPacket();
     }
@@ -150,9 +150,9 @@ void RemoteDriveComponent::runLoop() {
     }
 
     // 周期发送车辆状态
-    if (now - last_state >= state_interval_) {
+    if (now - last_state_sent >= kStateInterval) {
       sendState();
-      last_state = now;
+      last_state_sent = now;
     }
   }
 }
@@ -190,10 +190,12 @@ void RemoteDriveComponent::receiveControlPacket() {
 
 // 发送车辆状态
 void RemoteDriveComponent::sendState() {
+  const auto state = vehicleState();
+  if (!state) return;
+
   // 编码并广播状态
-  const protocol::ChassisState state = vehicleState();
   const auto packet =
-      protocol_codec::encodeChassisState(state, state_seq_++);
+      protocol_codec::encodeVehicleState(*state, state_seq_++);
   if (packet.empty()) return;
 
   for (const auto &cockpit_address : cockpit_addresses_) {
@@ -201,20 +203,20 @@ void RemoteDriveComponent::sendState() {
   }
 }
 
-// 生成状态快照
-protocol::ChassisState RemoteDriveComponent::vehicleState() const {
-  // 复制最近一次底盘状态
-  std::lock_guard<std::mutex> lock(state_mutex_);
-  protocol::ChassisState state = latest_state_.value_or(protocol::ChassisState{});
+// 获取当前车辆状态
+std::optional<protocol::VehicleState>
+RemoteDriveComponent::vehicleState() const {
+  protocol::VehicleState state;
+  {
+    // 复制最近一次车辆状态
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    if (!latest_state_) return std::nullopt;
+    state = *latest_state_;
+  }
 
   // 补充网关会话信息
   state.set_vehicle_id(vehicle_id_);
   state.set_controller_id(session_.cockpitId());
-
-  // 无底盘状态时默认驻车
-  if (!latest_state_) {
-    state.set_parking(true);
-  }
   return state;
 }
 

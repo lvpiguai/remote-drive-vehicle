@@ -81,7 +81,7 @@ void testControlDecoding() {
 
 // 验证状态包编码
 void testStateEncoding() {
-  pb::ChassisState input;
+  pb::VehicleState input;
   input.set_vehicle_id("truck_01");
   input.set_controller_id("cockpit_02");
   input.set_steering_angle(8.25);
@@ -89,7 +89,7 @@ void testStateEncoding() {
   input.set_drive_mode(pb::DRIVE_MODE_REMOTE);
   input.set_gear(pb::GEAR_DRIVE_1);
 
-  const auto bytes = protocol_codec::encodeChassisState(input, 7);
+  const auto bytes = protocol_codec::encodeVehicleState(input, 7);
   assert(!bytes.empty());
 
   pb::ProtocolPacket packet;
@@ -106,11 +106,11 @@ void testStateEncoding() {
   assert(protocol_codec::decodePacket(bytes.data(), bytes.size()));
 
   input.clear_vehicle_id();
-  assert(protocol_codec::encodeChassisState(input, 8).empty());
+  assert(protocol_codec::encodeVehicleState(input, 8).empty());
 
   input.set_vehicle_id("truck_01");
   input.set_speed(std::numeric_limits<double>::infinity());
-  assert(protocol_codec::encodeChassisState(input, 9).empty());
+  assert(protocol_codec::encodeVehicleState(input, 9).empty());
 }
 
 // 验证车端网关流程

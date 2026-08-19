@@ -6,7 +6,7 @@ module_config {
       name: "remote_drive_vehicle"
       config_file_path: "/apollo/data/remote_drive/vehicle.pb.txt"
       readers {
-        channel: "/remote_drive/chassis_state"
+        channel: "/remote_drive/vehicle_state"
       }
     }
   }

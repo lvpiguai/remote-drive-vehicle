@@ -58,7 +58,7 @@ bool validControlCommand(const pb::ControlCommand &command) {
 }
 
 // 校验车辆状态字段
-bool validChassisState(const pb::ChassisState &state) {
+bool validVehicleState(const pb::VehicleState &state) {
   return validId(state.vehicle_id(), true) &&
          validId(state.controller_id(), false) &&
          std::isfinite(state.steering_angle()) &&
@@ -73,7 +73,7 @@ bool validBody(const pb::ProtocolPacket &packet) {
     case pb::ProtocolPacket::kControl:
       return validControlCommand(packet.control());
     case pb::ProtocolPacket::kState:
-      return validChassisState(packet.state());
+      return validVehicleState(packet.state());
     case pb::ProtocolPacket::BODY_NOT_SET:
       return false;
   }
@@ -83,9 +83,9 @@ bool validBody(const pb::ProtocolPacket &packet) {
 } // namespace
 
 // 编码车辆状态
-PacketBytes encodeChassisState(const pb::ChassisState &state,
+PacketBytes encodeVehicleState(const pb::VehicleState &state,
                                std::uint32_t sequence) {
-  if (!validChassisState(state)) return {};
+  if (!validVehicleState(state)) return {};
 
   pb::ProtocolPacket packet;
   packet.set_magic(kMagic);

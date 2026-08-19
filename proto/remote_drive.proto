@@ -65,7 +65,7 @@ message ControlCommand {
   SwitchCommand diff_lock = 26;
 }
 
-message ChassisState {
+message VehicleState {
   string vehicle_id = 1;
   string controller_id = 2;
   double steering_angle = 3;
@@ -102,6 +102,6 @@ message ProtocolPacket {
 
   oneof body {
     ControlCommand control = 11;
-    ChassisState state = 12;
+    VehicleState state = 12;
   }
 }
