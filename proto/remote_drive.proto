@@ -50,6 +50,13 @@ enum SwitchCommand {
   SWITCH_ON = 2;
 }
 
+// 按住期间持续生效的控制意图；松开后不再参与控制
+enum HoldCommand {
+  HOLD_COMMAND_NO_CONTROL = 0;
+  reserved 1; // 保持与 SwitchCommand 的线上编码兼容
+  HOLD_COMMAND_ON = 2;
+}
+
 message ControlCommand {
   string cockpit_id = 1;
   double steering_angle = 2;
@@ -59,8 +66,8 @@ message ControlCommand {
   BucketCommand bucket = 6;
   RemoteModeRequest remote_mode_request = 7;
   SwitchCommand parking = 8;
-  SwitchCommand horn = 9;
-  SwitchCommand spray = 10;
+  HoldCommand horn = 9;
+  HoldCommand spray = 10;
   SwitchCommand remote_emergency = 11;
   SwitchCommand window_wiper = 12;
   SwitchCommand light_brake = 13;

@@ -23,6 +23,11 @@ bool validSwitch(pb::SwitchCommand command) {
   return pb::SwitchCommand_IsValid(command);
 }
 
+// 校验按住型控制意图
+bool validHold(pb::HoldCommand command) {
+  return pb::HoldCommand_IsValid(command);
+}
+
 // 校验控制字段
 bool validControlCommand(const pb::ControlCommand &command) {
   return validId(command.cockpit_id(), true) &&
@@ -38,8 +43,8 @@ bool validControlCommand(const pb::ControlCommand &command) {
          pb::GearCommand_IsValid(command.gear()) &&
          pb::BucketCommand_IsValid(command.bucket()) &&
          pb::RemoteModeRequest_IsValid(command.remote_mode_request()) &&
-         validSwitch(command.parking()) && validSwitch(command.horn()) &&
-         validSwitch(command.spray()) &&
+         validSwitch(command.parking()) && validHold(command.horn()) &&
+         validHold(command.spray()) &&
          validSwitch(command.remote_emergency()) &&
          validSwitch(command.window_wiper()) &&
          validSwitch(command.light_brake()) &&

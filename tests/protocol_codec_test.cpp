@@ -33,7 +33,7 @@ void testControlDecoding() {
   input.set_gear(pb::GEAR_COMMAND_DRIVE);
   input.set_bucket(pb::BUCKET_COMMAND_DOWN);
   input.set_remote_mode_request(pb::REMOTE_MODE_REQUEST_ENTER);
-  input.set_horn(pb::SWITCH_ON);
+  input.set_horn(pb::HOLD_COMMAND_ON);
   input.set_light_near(pb::SWITCH_ON);
   input.set_diff_lock(pb::SWITCH_ON);
 
@@ -49,7 +49,7 @@ void testControlDecoding() {
   assert(output->control().gear() == pb::GEAR_COMMAND_DRIVE);
   assert(output->control().bucket() == pb::BUCKET_COMMAND_DOWN);
   assert(output->control().remote_mode_request() == pb::REMOTE_MODE_REQUEST_ENTER);
-  assert(output->control().horn() == pb::SWITCH_ON);
+  assert(output->control().horn() == pb::HOLD_COMMAND_ON);
   assert(output->control().light_near() == pb::SWITCH_ON);
   assert(output->control().diff_lock() == pb::SWITCH_ON);
 
@@ -126,8 +126,8 @@ void testVehicleControlSession() {
   command.set_gear(pb::GEAR_COMMAND_DRIVE);
   command.set_bucket(pb::BUCKET_COMMAND_UP);
   command.set_accelerator_percent(20);
-  command.set_horn(pb::SWITCH_ON);
-  command.set_spray(pb::SWITCH_ON);
+  command.set_horn(pb::HOLD_COMMAND_ON);
+  command.set_spray(pb::HOLD_COMMAND_ON);
   command.set_window_wiper(pb::SWITCH_ON);
   command.set_light_brake(pb::SWITCH_ON);
   command.set_light_position(pb::SWITCH_ON);
