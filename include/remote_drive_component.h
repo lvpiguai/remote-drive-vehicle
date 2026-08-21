@@ -8,7 +8,7 @@
 #include <optional>
 #include <string>
 #include <thread>
-#include <vector>
+#include <unordered_map>
 
 #include "cyber/component/component.h"
 #include "cyber/cyber.h"
@@ -39,8 +39,11 @@ class RemoteDriveComponent final
   // 运行远控通信循环
   void runRemoteControlLoop();
 
+  // 判断 Cyber RT 车辆状态是否仍然有效
+  bool hasFreshVehicleState(Clock::time_point now) const;
+
   // 校验并转发控制包
-  void receiveControlPacket();
+  void receiveControlPacket(bool vehicle_state_fresh);
 
   // 发送车辆状态
   void sendState();
@@ -54,7 +57,7 @@ class RemoteDriveComponent final
 
   // 当前车辆的静态部署配置
   std::string vehicle_id_;
-  std::vector<sockaddr_in> cockpit_addresses_;
+  std::unordered_map<std::string, sockaddr_in> cockpit_addresses_;
 
   // UDP 工作线程状态
   UdpChannel udp_channel_;
@@ -65,6 +68,7 @@ class RemoteDriveComponent final
   // 车辆状态缓存
   mutable std::mutex state_mutex_;
   std::optional<protocol::VehicleState> latest_state_;
+  std::optional<Clock::time_point> last_state_receive_time_;
 
   // UDP 发送序号
   std::uint32_t state_seq_ = 1;

@@ -35,8 +35,8 @@ bool validControlCommand(const pb::ControlCommand &command) {
          command.accelerator_percent() <= 100.0 &&
          command.brake_percent() >= 0.0 &&
          command.brake_percent() <= 100.0 &&
-         pb::Gear_IsValid(command.gear()) &&
-         pb::Bucket_IsValid(command.bucket()) &&
+         pb::GearCommand_IsValid(command.gear()) &&
+         pb::BucketCommand_IsValid(command.bucket()) &&
          pb::RemoteModeRequest_IsValid(command.remote_mode_request()) &&
          validSwitch(command.parking()) && validSwitch(command.horn()) &&
          validSwitch(command.spray()) &&
@@ -60,11 +60,12 @@ bool validControlCommand(const pb::ControlCommand &command) {
 // 校验车辆状态字段
 bool validVehicleState(const pb::VehicleState &state) {
   return validId(state.vehicle_id(), true) &&
-         validId(state.controller_id(), false) &&
+         validId(state.cockpit_id(), false) &&
          std::isfinite(state.steering_angle()) &&
          std::isfinite(state.speed()) &&
          pb::DriveMode_IsValid(state.drive_mode()) &&
-         pb::Gear_IsValid(state.gear()) && pb::Bucket_IsValid(state.bucket());
+         pb::GearState_IsValid(state.gear()) &&
+         pb::BucketState_IsValid(state.bucket());
 }
 
 // 根据包体类型校验对应字段

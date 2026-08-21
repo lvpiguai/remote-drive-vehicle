@@ -3,9 +3,10 @@
 #include <arpa/inet.h>
 #include <poll.h>
 
-#include <algorithm>
 #include <chrono>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 #include "cyber/component/component.h"
@@ -16,36 +17,31 @@ namespace remote_drive::vehicle {
 
 namespace {
 
-constexpr std::size_t kMaxVehicleIdLength = 19;
+constexpr std::size_t kMaxIdLength = 19;
+constexpr std::uint16_t kCockpitUdpPort = 7005;
 constexpr std::uint16_t kVehicleUdpPort = 7006;
 constexpr auto kStateInterval = std::chrono::milliseconds(20);
+constexpr auto kVehicleStateTimeout = std::chrono::milliseconds(500);
 
 // 底盘控制 Channel
 constexpr char kControlChannel[] = "/remote_drive/control_cmd";
 
 // 解析驾驶舱端点
-bool parseCockpitAddress(const UdpEndpoint &config, sockaddr_in &address) {
+bool parseCockpitAddress(const ConfiguredCockpit &config,
+                         sockaddr_in &address) {
   address = {};
   address.sin_family = AF_INET;
-  if (config.port() == 0 || config.port() > 65535 ||
-      inet_pton(AF_INET, config.ip().c_str(), &address.sin_addr) != 1) {
+  if (inet_pton(AF_INET, config.ip().c_str(), &address.sin_addr) != 1) {
     return false;
   }
-  address.sin_port = htons(static_cast<std::uint16_t>(config.port()));
+  address.sin_port = htons(kCockpitUdpPort);
   return true;
 }
 
-// 校验车辆 ID
-bool validVehicleId(const std::string &vehicle_id) {
-  return !vehicle_id.empty() && vehicle_id.size() <= kMaxVehicleIdLength &&
-         vehicle_id.find_first_of("\\\"") == std::string::npos;
-}
-
-// 生成会话来源标识
-VehicleControlSession::ControllerSource controllerSource(
-    const sockaddr_in &address) {
-  return (static_cast<std::uint64_t>(address.sin_addr.s_addr) << 16) |
-         address.sin_port;
+// 校验协议标识字段
+bool validId(const std::string &id) {
+  return !id.empty() && id.size() <= kMaxIdLength &&
+         id.find_first_of("\\\"") == std::string::npos;
 }
 
 // 比较 UDP 端点
@@ -91,7 +87,7 @@ bool RemoteDriveComponent::Init() {
   return true;
 }
 
-// 缓存底盘状态
+// 缓存车辆状态
 bool RemoteDriveComponent::Proc(
     const std::shared_ptr<protocol::VehicleState> &state) {
   if (!state) return false;
@@ -99,6 +95,7 @@ bool RemoteDriveComponent::Proc(
   // 更新共享状态缓存
   std::lock_guard<std::mutex> lock(state_mutex_);
   latest_state_ = *state;
+  last_state_receive_time_ = Clock::now();
   return true;
 }
 
@@ -108,17 +105,23 @@ bool RemoteDriveComponent::loadConfig() {
   RemoteDriveVehicleConfig config;
   if (!GetProtoConfig(&config) || !config.IsInitialized()) return false;
 
-  if (!validVehicleId(config.vehicle_id()) || config.cockpits().empty()) {
+  if (!validId(config.vehicle_id()) || config.cockpits().empty()) {
     return false;
   }
 
   // 解析驾驶舱白名单
-  std::vector<sockaddr_in> cockpit_addresses;
+  std::unordered_map<std::string, sockaddr_in> cockpit_addresses;
+  std::unordered_set<std::uint32_t> cockpit_ips;
   cockpit_addresses.reserve(config.cockpits_size());
   for (const auto &cockpit : config.cockpits()) {
     sockaddr_in cockpit_address{};
-    if (!parseCockpitAddress(cockpit, cockpit_address)) return false;
-    cockpit_addresses.push_back(cockpit_address);
+    if (!validId(cockpit.cockpit_id()) ||
+        !parseCockpitAddress(cockpit, cockpit_address) ||
+        !cockpit_addresses.emplace(cockpit.cockpit_id(), cockpit_address)
+             .second ||
+        !cockpit_ips.insert(cockpit_address.sin_addr.s_addr).second) {
+      return false;
+    }
   }
 
   // 保存运行参数
@@ -129,47 +132,51 @@ bool RemoteDriveComponent::loadConfig() {
 
 // 运行远控通信循环
 void RemoteDriveComponent::runRemoteControlLoop() {
-  auto last_state_sent = Clock::now() - kStateInterval;
+  auto last_state_send_time = Clock::now() - kStateInterval;
 
   while (running_) {
     // 等待驾驶舱控制包
     pollfd descriptor{udp_channel_.fd(), POLLIN, 0};
     const int result =
         poll(&descriptor, 1, static_cast<int>(kStateInterval.count()));
+    const auto now = Clock::now();
+    const bool vehicle_state_fresh = hasFreshVehicleState(now);
+
     if (result > 0 && (descriptor.revents & POLLIN)) {
-      receiveControlPacket();
+      receiveControlPacket(vehicle_state_fresh);
     }
 
-    const auto now = Clock::now();
-
-    // 驾驶舱断联时只发送一次退出请求
-    if (session_.controlTimedOut(now)) {
+    // 驾驶舱断联或车辆状态超时时只发送一次退出请求
+    if (!vehicle_state_fresh || session_.controlTimedOut(now)) {
       if (const auto exit_command = session_.stopRemoteControl()) {
         control_writer_->Write(*exit_command);
       }
     }
 
     // 周期发送车辆状态
-    if (now - last_state_sent >= kStateInterval) {
+    if (vehicle_state_fresh &&
+        now - last_state_send_time >= kStateInterval) {
       sendState();
-      last_state_sent = now;
+      last_state_send_time = now;
     }
   }
 }
 
+// 判断最近一次 Cyber RT 车辆状态是否超时
+bool RemoteDriveComponent::hasFreshVehicleState(Clock::time_point now) const {
+  std::lock_guard<std::mutex> lock(state_mutex_);
+  return latest_state_ && last_state_receive_time_ &&
+         now - *last_state_receive_time_ < kVehicleStateTimeout;
+}
+
 // 校验并转发控制包
-void RemoteDriveComponent::receiveControlPacket() {
+void RemoteDriveComponent::receiveControlPacket(bool vehicle_state_fresh) {
   // 接收一个 UDP 数据报
   const auto datagram = udp_channel_.receive();
   if (!datagram) return;
 
-  // 校验驾驶舱来源
-  const bool known_cockpit =
-      std::any_of(cockpit_addresses_.begin(), cockpit_addresses_.end(),
-                  [&](const sockaddr_in &cockpit_address) {
-                    return sameAddress(cockpit_address, datagram->source);
-                  });
-  if (!known_cockpit) return;
+  // 车辆状态不可用时丢弃控制包，避免基于旧状态继续远控
+  if (!vehicle_state_fresh) return;
 
   // 解码控制包
   const auto packet = protocol_codec::decodePacket(
@@ -179,11 +186,16 @@ void RemoteDriveComponent::receiveControlPacket() {
     return;
   }
 
-  // 通过会话校验后立即转发
-  const auto source = controllerSource(datagram->source);
+  // 校验驾驶舱身份与来源映射
   const auto &control_command = packet->control();
-  if (session_.acceptControlCommand(control_command, packet->sequence(),
-                                    source)) {
+  const auto configured = cockpit_addresses_.find(control_command.cockpit_id());
+  if (configured == cockpit_addresses_.end() ||
+      !sameAddress(configured->second, datagram->source)) {
+    return;
+  }
+
+  // 通过会话校验后立即转发
+  if (session_.acceptControlCommand(control_command, packet->sequence())) {
     control_writer_->Write(control_command);
   }
 }
@@ -198,8 +210,8 @@ void RemoteDriveComponent::sendState() {
       protocol_codec::encodeVehicleState(*state, state_seq_++);
   if (packet.empty()) return;
 
-  for (const auto &cockpit_address : cockpit_addresses_) {
-    udp_channel_.send(cockpit_address, packet.data(), packet.size());
+  for (const auto &cockpit : cockpit_addresses_) {
+    udp_channel_.send(cockpit.second, packet.data(), packet.size());
   }
 }
 
@@ -216,7 +228,7 @@ RemoteDriveComponent::vehicleState() const {
 
   // 补充网关会话信息
   state.set_vehicle_id(vehicle_id_);
-  state.set_controller_id(session_.cockpitId());
+  state.set_cockpit_id(session_.cockpitId());
   return state;
 }
 

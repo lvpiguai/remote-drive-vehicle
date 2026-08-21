@@ -2,10 +2,10 @@ syntax = "proto2";
 
 package remote_drive.vehicle;
 
-// 一个允许与车辆通信的驾驶舱 UDP 端点
-message UdpEndpoint {
-  required string ip = 1;
-  required uint32 port = 2;
+// 一个允许与车辆通信的驾驶舱
+message ConfiguredCockpit {
+  required string cockpit_id = 1;
+  required string ip = 2;
 }
 
 // 单辆车的运行时部署配置，由 Cyber Component 在启动时加载
@@ -16,8 +16,8 @@ message RemoteDriveVehicleConfig {
   // 字段 2 曾用于本地 UDP 端口，保留编号避免后续误复用
   reserved 2;
 
-  // 车辆状态发送目标，同时作为控制包来源白名单
-  repeated UdpEndpoint cockpits = 3;
+  // 车辆状态发送目标，同时作为控制包身份与来源白名单
+  repeated ConfiguredCockpit cockpits = 3;
 
   // 字段 4 曾用于控制 Channel，保留编号避免后续误复用
   reserved 4;

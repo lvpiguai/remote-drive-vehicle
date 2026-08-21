@@ -1,11 +1,11 @@
 vehicle_id: "truck_01"
 
 cockpits {
+  cockpit_id: "cockpit_01"
   ip: "192.168.10.21"
-  port: 7005
 }
 
 cockpits {
+  cockpit_id: "cockpit_02"
   ip: "192.168.10.22"
-  port: 7005
 }

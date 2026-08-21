@@ -2,19 +2,33 @@ syntax = "proto3";
 
 package remote_drive.protocol;
 
-enum Gear {
-  GEAR_NEUTRAL = 0;
-  GEAR_REVERSE_1 = 1;
-  GEAR_REVERSE_2 = 2;
-  GEAR_DRIVE_1 = 3;
-  GEAR_DRIVE_2 = 4;
-  GEAR_DRIVE_3 = 5;
+// 车辆实际挡位状态
+enum GearState {
+  GEAR_STATE_NEUTRAL = 0;
+  GEAR_STATE_REVERSE = 1;
+  GEAR_STATE_DRIVE = 2;
 }
 
-enum Bucket {
-  BUCKET_KEEP = 0;
-  BUCKET_UP = 1;
-  BUCKET_DOWN = 2;
+// 挡位控制意图；NO_CONTROL 表示当前控制源不参与挡位控制
+enum GearCommand {
+  GEAR_COMMAND_NO_CONTROL = 0;
+  GEAR_COMMAND_NEUTRAL = 1;
+  GEAR_COMMAND_REVERSE = 2;
+  GEAR_COMMAND_DRIVE = 3;
+}
+
+// 车辆实际铲斗状态
+enum BucketState {
+  BUCKET_STATE_KEEP = 0;
+  BUCKET_STATE_UP = 1;
+  BUCKET_STATE_DOWN = 2;
+}
+
+// 铲斗控制意图；无按键时为 NO_CONTROL
+enum BucketCommand {
+  BUCKET_COMMAND_NO_CONTROL = 0;
+  BUCKET_COMMAND_UP = 1;
+  BUCKET_COMMAND_DOWN = 2;
 }
 
 enum DriveMode {
@@ -41,8 +55,8 @@ message ControlCommand {
   double steering_angle = 2;
   double accelerator_percent = 3;
   double brake_percent = 4;
-  Gear gear = 5;
-  Bucket bucket = 6;
+  GearCommand gear = 5;
+  BucketCommand bucket = 6;
   RemoteModeRequest remote_mode_request = 7;
   SwitchCommand parking = 8;
   SwitchCommand horn = 9;
@@ -67,12 +81,12 @@ message ControlCommand {
 
 message VehicleState {
   string vehicle_id = 1;
-  string controller_id = 2;
+  string cockpit_id = 2;
   double steering_angle = 3;
   double speed = 4;
   DriveMode drive_mode = 5;
-  Gear gear = 6;
-  Bucket bucket = 7;
+  GearState gear = 6;
+  BucketState bucket = 7;
   bool parking = 8;
   bool horn = 9;
   bool spray = 10;
